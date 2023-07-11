@@ -1,0 +1,19 @@
+.TH "libnvme" 9 "struct nvme_feat_host_behavior" "June 2023" "API Manual" LINUX
+.SH NAME
+struct nvme_feat_host_behavior \- Host Behavior Support - Data Structure
+.SH SYNOPSIS
+struct nvme_feat_host_behavior {
+.br
+.BI "    __u8 acre;"
+.br
+.BI "    __u8 rsvd1[511];"
+.br
+.BI "
+};
+.br
+
+.SH Members
+.IP "acre" 12
+Advanced Command Retry Enable
+.IP "rsvd1" 12
+Reserved
