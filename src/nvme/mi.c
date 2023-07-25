@@ -413,11 +413,6 @@ int nvme_mi_submit(nvme_mi_ep_t ep, struct nvme_mi_req *req,
 		return -1;
 	}
 
-	if (resp->data_len & 0x3) {
-		errno = EINVAL;
-		return -1;
-	}
-
 	if (ep->transport->mic_enabled)
 		nvme_mi_calc_req_mic(req);
 
@@ -580,8 +575,10 @@ int nvme_mi_admin_xfer(nvme_mi_ctrl_t ctrl,
 		return -1;
 	}
 
-	/* must be aligned */
-	if (resp_data_offset & 0x3) {
+	/* request and response lengths & offset must be aligned */
+	if ((req_data_size & 0x3) ||
+	    (*resp_data_size & 0x3) ||
+	    (resp_data_offset & 0x3)) {
 		errno = EINVAL;
 		return -1;
 	}
