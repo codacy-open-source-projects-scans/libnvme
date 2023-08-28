@@ -748,7 +748,6 @@ static inline int nvme_identify_primary_ctrl(int fd, __u16 cntid,
 /**
  * nvme_identify_secondary_ctrl_list() - Retrieves secondary controller list
  * @fd:		File descriptor of nvme device
- * @nsid:	Namespace identifier
  * @cntid:	Return controllers starting at this identifier
  * @sc_list:	User space destination address to transfer the data
  *
@@ -763,7 +762,7 @@ static inline int nvme_identify_primary_ctrl(int fd, __u16 cntid,
  * Return: The nvme command status if a response was received (see
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
-static inline int nvme_identify_secondary_ctrl_list(int fd, __u32 nsid,
+static inline int nvme_identify_secondary_ctrl_list(int fd,
 			__u16 cntid, struct nvme_secondary_ctrl_list *sc_list)
 {
 	struct nvme_identify_args args = {
@@ -774,7 +773,7 @@ static inline int nvme_identify_secondary_ctrl_list(int fd, __u32 nsid,
 		.timeout = NVME_DEFAULT_IOCTL_TIMEOUT,
 		.cns = NVME_IDENTIFY_CNS_SECONDARY_CTRL_LIST,
 		.csi = NVME_CSI_NVM,
-		.nsid = nsid,
+		.nsid = NVME_NSID_NONE,
 		.cntid = cntid,
 		.cns_specific_id = NVME_CNSSPECID_NONE,
 		.uuidx = NVME_UUID_NONE,
@@ -981,21 +980,8 @@ static inline int nvme_identify_allocated_ns_list_csi(int fd, __u32 nsid,
 static inline int nvme_identify_independent_identify_ns(int fd, __u32 nsid,
 			struct nvme_id_independent_id_ns *ns)
 {
-	struct nvme_identify_args args = {
-		.result = NULL,
-		.data = ns,
-		.args_size = sizeof(args),
-		.fd = fd,
-		.timeout = NVME_DEFAULT_IOCTL_TIMEOUT,
-		.cns = NVME_IDENTIFY_CNS_CSI_INDEPENDENT_ID_NS,
-		.csi = NVME_CSI_NVM,
-		.nsid = nsid,
-		.cntid = NVME_CNTLID_NONE,
-		.cns_specific_id = NVME_CNSSPECID_NONE,
-		.uuidx = NVME_UUID_NONE,
-	};
-
-	return nvme_identify(&args);
+	return nvme_identify_cns_nsid(
+		fd, NVME_IDENTIFY_CNS_CSI_INDEPENDENT_ID_NS, nsid, ns);
 }
 
 /**
@@ -1194,20 +1180,8 @@ static inline int nvme_identify_iocs(int fd, __u16 cntlid,
 static inline int nvme_zns_identify_ns(int fd, __u32 nsid,
 			struct nvme_zns_id_ns *data)
 {
-	struct nvme_identify_args args = {
-		.result = NULL,
-		.data = data,
-		.args_size = sizeof(args),
-		.fd = fd,
-		.timeout = NVME_DEFAULT_IOCTL_TIMEOUT,
-		.cns = NVME_IDENTIFY_CNS_CSI_NS,
-		.csi = NVME_CSI_ZNS,
-		.nsid = nsid,
-		.cntid = NVME_CNTLID_NONE,
-		.cns_specific_id = NVME_CNSSPECID_NONE,
-	};
-
-	return nvme_identify(&args);
+	return nvme_identify_ns_csi(
+		fd, nsid, NVME_UUID_NONE, NVME_CSI_ZNS, data);
 }
 
 /**
