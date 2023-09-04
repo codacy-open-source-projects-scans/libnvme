@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
 
 #include <ccan/array_size/array_size.h>
 
@@ -70,14 +71,51 @@ static void show_ctrl(nvme_ctrl_t c)
 
 	if (d)
 		printf("ctrl%d ", d->ctrl_id);
+	else
+		printf("      ");
 
-	printf("0x%p: %s %s %s %s %s\n",
+	printf("0x%p: %s %s %s %s %s ",
 	       c,
 	       nvme_ctrl_get_transport(c),
 	       nvme_ctrl_get_traddr(c),
 	       nvme_ctrl_get_host_traddr(c),
 	       nvme_ctrl_get_host_iface(c),
 	       nvme_ctrl_get_trsvcid(c));
+}
+
+static bool match_ctrl(struct test_data *d, nvme_ctrl_t c)
+{
+	bool pass = true;
+	const char *trsvid, *host_traddr, *host_iface;
+
+	if (d->c != c)
+		pass = false;
+
+	if (strcmp(d->transport, nvme_ctrl_get_transport(d->c)))
+		pass = false;
+
+	if (strcmp(d->traddr, nvme_ctrl_get_traddr(d->c)))
+		pass = false;
+
+
+	host_traddr = nvme_ctrl_get_host_traddr(c);
+	if (d->host_traddr &&
+	    (!host_traddr || strcmp(d->host_traddr, host_traddr)))
+		pass = false;
+
+	host_iface = nvme_ctrl_get_host_iface(c);
+	if (d->host_iface &&
+	    (!host_iface || strcmp(d->host_iface, host_iface)))
+		pass = false;
+
+	trsvid = nvme_ctrl_get_trsvcid(c);
+	if (d->trsvcid &&
+	    (!trsvid || strcmp(d->trsvcid, trsvid)))
+		pass = false;
+
+	printf("[%s]", pass? "PASS" : "FAILED");
+
+	return pass;
 }
 
 static nvme_root_t create_tree()
@@ -102,14 +140,10 @@ static nvme_root_t create_tree()
 		assert(d->c);
 		d->ctrl_id = i;
 
-		assert(!strcmp(d->transport, nvme_ctrl_get_transport(d->c)));
-		assert(!strcmp(d->traddr, nvme_ctrl_get_traddr(d->c)));
-		assert(!d->host_traddr || !strcmp(d->host_traddr, nvme_ctrl_get_host_traddr(d->c)));
-		assert(!d->host_iface || !strcmp(d->host_iface, nvme_ctrl_get_host_iface(d->c)));
-		assert(!d->trsvcid || !strcmp(d->trsvcid, nvme_ctrl_get_trsvcid(d->c)));
-
 		printf("    ");
 		show_ctrl(d->c);
+		match_ctrl(d, d->c);
+		printf("\n");
 	}
 	printf("\n");
 
@@ -123,22 +157,76 @@ static unsigned int count_entries(nvme_root_t r)
 	nvme_ctrl_t c;
 	unsigned int i = 0;
 
-	nvme_for_each_host(r, h) {
-		nvme_for_each_subsystem(h, s) {
-			nvme_subsystem_for_each_ctrl(s, c) {
+	nvme_for_each_host(r, h)
+		nvme_for_each_subsystem(h, s)
+			nvme_subsystem_for_each_ctrl(s, c)
 				i++;
-			}
-		}
-	}
 
 	return i;
 }
 
-static void ctrl_lookups(nvme_root_t r)
+static bool tcp_ctrl_lookup(nvme_subsystem_t s, struct test_data *d)
+{
+	nvme_ctrl_t c;
+	bool pass = true;
+
+	c = nvme_lookup_ctrl(s, d->transport, d->traddr, NULL,
+			     NULL, d->trsvcid, NULL);
+	printf("%10s %12s %10s -> ", d->trsvcid, "", "");
+	show_ctrl(c);
+	pass &= match_ctrl(d, c);
+	printf("\n");
+
+	if (d->host_traddr) {
+		c = nvme_lookup_ctrl(s, d->transport, d->traddr, d->host_traddr,
+				     NULL, d->trsvcid, NULL);
+		printf("%10s %12s %10s -> ", d->trsvcid, d->host_traddr, "");
+		show_ctrl(c);
+		pass &= match_ctrl(d, c);
+		printf("\n");
+	}
+
+	if (d->host_iface) {
+		c = nvme_lookup_ctrl(s, d->transport, d->traddr, NULL,
+				     d->host_iface, d->trsvcid, NULL);
+		printf("%10s %12s %10s -> ", d->trsvcid, "", d->host_iface);
+		show_ctrl(c);
+		pass &= match_ctrl(d, c);
+		printf("\n");
+	}
+
+	if (d->host_iface && d->traddr)	{
+		c = nvme_lookup_ctrl(s, d->transport, d->traddr, d->host_traddr,
+				     d->host_iface, d->trsvcid, NULL);
+		printf("%10s %12s %10s -> ", d->trsvcid, d->host_traddr, d->host_iface);
+		show_ctrl(c);
+		pass &= match_ctrl(d, c);
+		printf("\n");
+	}
+
+	return pass;
+}
+
+static bool default_ctrl_lookup(nvme_subsystem_t s, struct test_data *d)
+{
+	nvme_ctrl_t c;
+	bool pass = true;
+
+	c = nvme_lookup_ctrl(s, d->transport, d->traddr, d->host_traddr,
+			     NULL, NULL, NULL);
+	printf("%10s %12s %10s -> ", "", "", "");
+	show_ctrl(c);
+	pass &= match_ctrl(d, c);
+	printf("\n");
+
+	return pass;
+}
+
+static bool ctrl_lookups(nvme_root_t r)
 {
 	nvme_host_t h;
 	nvme_subsystem_t s;
-	nvme_ctrl_t c;
+	bool pass = true;
 
 	h = nvme_first_host(r);
 	s = nvme_lookup_subsystem(h, DEFAULT_SUBSYSNAME, DEFAULT_SUBSYSNQN);
@@ -147,119 +235,38 @@ static void ctrl_lookups(nvme_root_t r)
 	for (int i = 0; i < ARRAY_SIZE(test_data); i++) {
 		struct test_data *d = &test_data[i];
 
-		printf("%10s %10s    ", "", "");
+		printf("%10s %12s %10s    ", "", "", "");
 		show_ctrl(d->c);
-		c = nvme_lookup_ctrl(s, d->transport, d->traddr, d->host_traddr,
-				     NULL, NULL, NULL);
-		printf("%10s %10s -> ", "-", "-");
-		show_ctrl(c);
+		printf("\n");
 
-		assert(!strcmp(d->transport, nvme_ctrl_get_transport(c)));
-		assert(!strcmp(d->traddr, nvme_ctrl_get_traddr(c)));
-		assert(!strcmp(d->host_traddr, nvme_ctrl_get_host_traddr(c)));
-
-		if (d->host_iface) {
-			c = nvme_lookup_ctrl(s, d->transport, d->traddr, d->host_traddr,
-					     d->host_iface, NULL, NULL);
-			printf("%10s %10s -> ", d->host_iface, "-");
-			show_ctrl(c);
-
-			assert(!strcmp(d->transport, nvme_ctrl_get_transport(c)));
-			assert(!strcmp(d->traddr, nvme_ctrl_get_traddr(c)));
-			assert(!strcmp(d->host_traddr, nvme_ctrl_get_host_traddr(c)));
-			assert(!strcmp(d->host_iface, nvme_ctrl_get_host_iface(c)));
-		}
-
-		if (d->trsvcid) {
-			c = nvme_lookup_ctrl(s, d->transport, d->traddr, d->host_traddr,
-					     NULL, d->trsvcid, NULL);
-			printf("%10s %10s -> ", "-", d->trsvcid);
-			show_ctrl(c);
-
-			assert(!strcmp(d->transport, nvme_ctrl_get_transport(c)));
-			assert(!strcmp(d->traddr, nvme_ctrl_get_traddr(c)));
-			assert(!strcmp(d->host_traddr, nvme_ctrl_get_host_traddr(c)));
-			assert(!strcmp(d->trsvcid, nvme_ctrl_get_trsvcid(c)));
-		}
-
-		if (d->host_iface && d->trsvcid) {
-			c = nvme_lookup_ctrl(s, d->transport, d->traddr, d->host_traddr,
-					     d->host_iface, d->trsvcid, NULL);
-			printf("%10s %10s -> ", d->host_iface, d->trsvcid);
-			show_ctrl(c);
-
-			assert(!strcmp(d->transport, nvme_ctrl_get_transport(c)));
-			assert(!strcmp(d->traddr, nvme_ctrl_get_traddr(c)));
-			assert(!strcmp(d->host_traddr, nvme_ctrl_get_host_traddr(c)));
-			assert(!strcmp(d->trsvcid, nvme_ctrl_get_trsvcid(c)));
-			assert(!strcmp(d->host_iface, nvme_ctrl_get_host_iface(c)));
-		}
+		if (!strcmp("tcp", d->transport))
+			pass &= tcp_ctrl_lookup(s, d);
+		else
+			pass &= default_ctrl_lookup(s, d);
 
 		printf("\n");
 	}
+
+	return pass;
 }
 
-static void test_lookup_1(void)
+static bool test_lookup(void)
 {
 	nvme_root_t r;
+	bool pass;
 
-	printf("test_lookup_1:\n");
+	printf("test_lookup:\n");
 
 	r = create_tree();
-	assert(count_entries(r) == ARRAY_SIZE(test_data));
-	ctrl_lookups(r);
+	pass = count_entries(r) == ARRAY_SIZE(test_data);
+	pass &= ctrl_lookups(r);
 
 	nvme_free_tree(r);
+
+	return pass;
 }
 
-static void test_lookup_2(void)
-{
-	nvme_root_t r;
-	nvme_subsystem_t s;
-	nvme_host_t h;
-	nvme_ctrl_t c1, c2, c3, c4;
-
-	printf("test_lookup_2:\n");
-
-	r = nvme_create_root(stdout, LOG_DEBUG);
-	assert(r);
-	h = nvme_default_host(r);
-	assert(h);
-
-	s = nvme_lookup_subsystem(h, DEFAULT_SUBSYSNAME, DEFAULT_SUBSYSNQN);
-	assert(s);
-
-	assert(nvme_lookup_ctrl(s, "tcp", "192.168.2.1", "192.168.2.20",
-				"eth0", "4420", NULL));
-
-	c1 = nvme_lookup_ctrl(s, "tcp", "192.168.1.1", "192.168.1.20",
-			      NULL, NULL, NULL);
-	assert(c1);
-	printf("%10s %10s    ", "", "");
-	show_ctrl(c1);
-
-	c2 = nvme_lookup_ctrl(s, "tcp", "192.168.1.1", "192.168.1.20",
-			      "eth0", NULL, NULL);
-	assert(c1 == c2);
-	printf("%10s %10s    ", "eth0", "-");
-	show_ctrl(c2);
-
-	c3 = nvme_lookup_ctrl(s, "tcp", "192.168.1.1", "192.168.1.20",
-			      NULL, "4420", NULL);
-	assert(c1 == c3);
-	printf("%10s %10s    ", "-", "4420");
-	show_ctrl(c3);
-
-	c4 = nvme_lookup_ctrl(s, "tcp", "192.168.1.1", "192.168.1.20",
-			      "eth0", "4420", NULL);
-	assert(c1 == c4);
-	printf("%10s %10s    ", "eth0", "4420");
-	show_ctrl(c4);
-
-	nvme_free_tree(r);
-}
-
-bool test_src_addr()
+static bool test_src_addr()
 {
 	bool pass = true;
 	nvme_root_t r;
@@ -405,14 +412,635 @@ bool test_src_addr()
 	return pass;
 }
 
+struct ctrl_args {
+	const char *transport;
+	const char *traddr;
+	const char *trsvcid;
+	const char *host_traddr;
+	const char *host_iface;
+	const char *address;
+};
+
+static void set_ctrl_args(struct ctrl_args *args,
+			  const char *transport,
+			  const char *traddr,
+			  const char *trsvcid,
+			  const char *host_traddr,
+			  const char *host_iface,
+			  const char *address)
+{
+	args->transport   = transport;
+	args->traddr      = traddr;
+	args->trsvcid     = trsvcid;
+	args->host_traddr = host_traddr;
+	args->host_iface  = host_iface;
+	args->address     = address;
+}
+
+static bool ctrl_match(const char *tag,
+		       int reference_id,
+		       int candidate_id,
+		       struct ctrl_args *reference,
+		       struct ctrl_args *candidate,
+		       bool should_match)
+{
+	nvme_root_t r;
+	nvme_host_t h;
+	nvme_ctrl_t reference_ctrl; /* Existing controller (from sysfs) */
+	nvme_ctrl_t candidate_ctrl;
+	nvme_subsystem_t s;
+
+	r = nvme_create_root(stdout, LOG_DEBUG);
+	assert(r);
+
+	nvme_init_logging(r, LOG_INFO, false, false);
+
+	h = nvme_default_host(r);
+	assert(h);
+
+	s = nvme_lookup_subsystem(h, DEFAULT_SUBSYSNAME, DEFAULT_SUBSYSNQN);
+	assert(s);
+
+	reference_ctrl = nvme_lookup_ctrl(s, reference->transport, reference->traddr,
+					  reference->host_traddr, reference->host_iface,
+					  reference->trsvcid, NULL);
+	assert(reference_ctrl);
+	reference_ctrl->name = "nvme1";  /* fake the device name */
+	if (reference->address) {
+		reference_ctrl->address = (char *)reference->address;
+	}
+
+	candidate_ctrl = nvme_lookup_ctrl(s, candidate->transport, candidate->traddr,
+					  candidate->host_traddr, candidate->host_iface,
+					  candidate->trsvcid, NULL);
+
+	if (should_match) {
+		if (candidate_ctrl != reference_ctrl) {
+			printf("%s-%d-%d: Candidate (%s, %s, %s, %s, %s) failed to match (%s, %s, %s, %s, %s, %s)\n",
+			       tag, reference_id, candidate_id,
+			       candidate->transport, candidate->traddr, candidate->trsvcid,
+			       candidate->host_traddr, candidate->host_iface,
+			       reference->transport, reference->traddr, reference->trsvcid,
+			       reference->host_traddr, reference->host_iface, reference->address);
+			return false;
+		}
+	} else {
+		if (candidate_ctrl == reference_ctrl) {
+			printf("%s-%d-%d: Candidate (%s, %s, %s, %s, %s) should not match (%s, %s, %s, %s, %s, %s)\n",
+			       tag, reference_id, candidate_id,
+			       candidate->transport, candidate->traddr, candidate->trsvcid,
+			       candidate->host_traddr, candidate->host_iface,
+			       reference->transport, reference->traddr, reference->trsvcid,
+			       reference->host_traddr, reference->host_iface, reference->address);
+			return false;
+		}
+	}
+
+	/* Set the faked data back to NULL before freeing the tree */
+	reference_ctrl->name = NULL;
+	reference_ctrl->address = NULL;
+
+	nvme_free_tree(r);
+
+	return true;
+}
+
+/**
+ * test_ctrl_match_fc - Test that we can look up FC controllers
+ *
+ * @return true when all tests have passed. false otherwise.
+ */
+static bool test_ctrl_match_fc(void)
+{
+	bool pass = true;
+	struct ctrl_args reference = {0};
+	struct ctrl_args candidate = {0};
+
+	printf("test_ctrl_match_fc:\n");
+
+	/*******************************************************************/
+	/* Reference ID 1 */
+	set_ctrl_args(&reference, "fc", "21:00:00:e0:8b:05:05:01", "4420", "21:00:00:e0:8b:05:05:20", NULL, NULL);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", "21:00:00:e0:8b:05:05:20", NULL, NULL);
+	pass &= ctrl_match("FC", 1, 0, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, NULL, NULL);
+	pass &= ctrl_match("FC", 1, 1, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("FC", 1, 2, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "192.168.2.2", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("FC", 1, 3, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("FC", 1, 4, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", "21:00:00:e0:8b:05:05:21", NULL, NULL);
+	pass &= ctrl_match("FC", 1, 5, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "8009", NULL, "", NULL);
+	pass &= ctrl_match("FC", 1, 6, &reference, &candidate, false);
+
+
+	/*******************************************************************/
+	/* Reference ID 2 */
+	set_ctrl_args(&reference, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, NULL, NULL);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", "21:00:00:e0:8b:05:05:20", NULL, NULL);
+	pass &= ctrl_match("FC", 2, 0, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, NULL, NULL);
+	pass &= ctrl_match("FC", 2, 1, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("FC", 2, 2, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "192.168.2.2", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("FC", 2, 3, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("FC", 2, 4, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "8009", NULL, "", NULL);
+	pass &= ctrl_match("FC", 2, 5, &reference, &candidate, false);
+
+
+	/*******************************************************************/
+	/* Reference ID 3 */
+	set_ctrl_args(&reference, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, "eth0", NULL);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", "21:00:00:e0:8b:05:05:20", NULL, NULL);
+	pass &= ctrl_match("FC", 3, 0, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, NULL, NULL);
+	pass &= ctrl_match("FC", 3, 1, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("FC", 3, 2, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "fc", "192.168.2.2", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("FC", 3, 3, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("FC", 3, 4, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "fc", "21:00:00:e0:8b:05:05:01", "8009", NULL, "", NULL);
+	pass &= ctrl_match("FC", 3, 5, &reference, &candidate, false);
+
+	return pass;
+}
+
+/**
+ * test_ctrl_match_rdma - Test that we can look up RDMA controllers
+ *
+ * @return true when all tests have passed. false otherwise.
+ */
+static bool test_ctrl_match_rdma(void)
+{
+	bool pass = true;
+	struct ctrl_args reference = {0};
+	struct ctrl_args candidate = {0};
+
+	printf("test_ctrl_match_rdma:\n");
+
+	/*******************************************************************/
+	/* Reference ID 1 */
+	set_ctrl_args(&reference, "rdma", "192.168.2.1", "4420", "192.168.1.20", NULL, NULL);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("RDMA", 1, 0, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", NULL, NULL, NULL);
+	pass &= ctrl_match("RDMA", 1, 1, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("RDMA", 1, 2, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.2", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("RDMA", 1, 3, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("RDMA", 1, 4, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("RDMA", 1, 5, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "8009", NULL, "", NULL);
+	pass &= ctrl_match("RDMA", 1, 6, &reference, &candidate, false);
+
+
+	/*******************************************************************/
+	/* Reference ID 2 */
+	set_ctrl_args(&reference, "rdma", "192.168.2.1", "4420", NULL, NULL, NULL);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("RDMA", 2, 0, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", NULL, NULL, NULL);
+	pass &= ctrl_match("RDMA", 2, 1, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("RDMA", 2, 2, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.2", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("RDMA", 2, 3, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("RDMA", 2, 4, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "8009", NULL, "", NULL);
+	pass &= ctrl_match("RDMA", 2, 5, &reference, &candidate, false);
+
+
+	/*******************************************************************/
+	/* Reference ID 3 */
+	set_ctrl_args(&reference, "rdma", "192.168.2.1", "4420", NULL, "eth0", NULL);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("RDMA", 3, 0, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", NULL, NULL, NULL);
+	pass &= ctrl_match("RDMA", 3, 1, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("RDMA", 3, 2, &reference, &candidate, true);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.2", "4420", NULL, "eth0", NULL);
+	pass &= ctrl_match("RDMA", 3, 3, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("RDMA", 3, 4, &reference, &candidate, false);
+
+	set_ctrl_args(&candidate, "rdma", "192.168.2.1", "8009", NULL, "", NULL);
+	pass &= ctrl_match("RDMA", 3, 5, &reference, &candidate, false);
+
+	return pass;
+}
+
+/**
+ * test_ctrl_match_tcp - Test that we can look up TCP controllers
+ *
+ * @note: The mocked getifaddrs() returns 4 interface entries as follows.
+ *        Therefore the tests must use IP addresses that match there.
+ *
+ *        eth0
+ *         \_ 192.168.1.20
+ *         \_ fe80::dead:beef
+ *
+ *        lo
+ *         \_ 127.0.0.1
+ *         \_ ::1
+ *
+ * @return true when all tests have passed. false otherwise.
+ */
+static bool test_ctrl_match_tcp()
+{
+	bool pass = true;
+	struct ctrl_args reference = {0};
+	struct ctrl_args candidate = {0};
+
+	printf("\n"
+	       "test_ctrl_match_tcp:\n");
+
+	/*******************************************************************/
+	/* IPv4: Reference ID 1 */
+	set_ctrl_args(&reference, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv4", 1, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("IPv4", 1, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv4", 1, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 1, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("IPv4", 1, 4, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 1, 5, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv4", 1, 6, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "lo", NULL);
+	pass &= ctrl_match("IPv4", 1, 7, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "lo", NULL);
+	pass &= ctrl_match("IPv4", 1, 8, &reference, &candidate, true);
+
+	/*******************************************************************/
+	/* IPv4: Reference ID 2 */
+	set_ctrl_args(&reference, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv4", 2, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("IPv4", 2, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv4", 2, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 2, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("IPv4", 2, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 2, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv4", 2, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "lo", NULL);
+	pass &= ctrl_match("IPv4", 2, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "lo", NULL);
+	pass &= ctrl_match("IPv4", 2, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv4: Reference ID 3 */
+	set_ctrl_args(&reference, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv4", 3, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("IPv4", 3, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv4", 3, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 3, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("IPv4", 3, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 3, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv4", 3, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "lo", NULL);
+	pass &= ctrl_match("IPv4", 3, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "lo", NULL);
+	pass &= ctrl_match("IPv4", 3, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv4: Reference ID 4 */
+	set_ctrl_args(&reference, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv4", 4, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("IPv4", 4, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv4", 4, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 4, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("IPv4", 4, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 4, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv4", 4, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "lo", NULL);
+	pass &= ctrl_match("IPv4", 4, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "lo", NULL);
+	pass &= ctrl_match("IPv4", 4, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv4: Reference ID 5 */
+	set_ctrl_args(&reference, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv4", 5, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("IPv4", 5, 1, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv4", 5, 2, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 5, 3, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("IPv4", 5, 4, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 5, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv4", 5, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "lo", NULL);
+	pass &= ctrl_match("IPv4", 5, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "lo", NULL);
+	pass &= ctrl_match("IPv4", 5, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv4: Reference ID 6 */
+	set_ctrl_args(&reference, "tcp", "123.123.123.123", "8009", NULL, NULL, "traddr=123.123.123.123,trsvcid=8009,src_addr=192.168.1.20");
+
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv4", 6, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("IPv4", 6, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv4", 6, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 6, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("IPv4", 6, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 6, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv4", 6, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "lo", NULL);
+	pass &= ctrl_match("IPv4", 6, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "lo", NULL);
+	pass &= ctrl_match("IPv4", 6, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv4: Reference ID 7 */
+	set_ctrl_args(&reference, "tcp", "123.123.123.123", "8009", NULL, NULL, "traddr=123.123.123.123,trsvcid=8009,src_addr=127.0.0.1");
+
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv4", 7, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", NULL, NULL);
+	pass &= ctrl_match("IPv4", 7, 1, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv4", 7, 2, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 7, 3, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", NULL, NULL);
+	pass &= ctrl_match("IPv4", 7, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "eth0", NULL);
+	pass &= ctrl_match("IPv4", 7, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv4", 7, 6, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.20", "lo", NULL);
+	pass &= ctrl_match("IPv4", 7, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "123.123.123.123", "8009", "192.168.1.21", "lo", NULL);
+	pass &= ctrl_match("IPv4", 7, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv6: Reference ID 1 */
+	set_ctrl_args(&reference, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv6", 1, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+	pass &= ctrl_match("IPv6", 1, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv6", 1, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 1, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+	pass &= ctrl_match("IPv6", 1, 4, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 1, 5, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv6", 1, 6, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "lo", NULL);
+	pass &= ctrl_match("IPv6", 1, 7, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "lo", NULL);
+	pass &= ctrl_match("IPv6", 1, 8, &reference, &candidate, true);
+
+	/*******************************************************************/
+	/* IPv6: Reference ID 2 */
+	set_ctrl_args(&reference, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv6", 2, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+	pass &= ctrl_match("IPv6", 2, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv6", 2, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 2, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+	pass &= ctrl_match("IPv6", 2, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 2, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv6", 2, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "lo", NULL);
+	pass &= ctrl_match("IPv6", 2, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "lo", NULL);
+	pass &= ctrl_match("IPv6", 2, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv6: Reference ID 3 */
+	set_ctrl_args(&reference, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv6", 3, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+	pass &= ctrl_match("IPv6", 3, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv6", 3, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 3, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+	pass &= ctrl_match("IPv6", 3, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 3, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv6", 3, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "lo", NULL);
+	pass &= ctrl_match("IPv6", 3, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "lo", NULL);
+	pass &= ctrl_match("IPv6", 3, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv6: Reference ID 4 */
+	set_ctrl_args(&reference, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv6", 4, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+	pass &= ctrl_match("IPv6", 4, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv6", 4, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 4, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+	pass &= ctrl_match("IPv6", 4, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 4, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv6", 4, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "lo", NULL);
+	pass &= ctrl_match("IPv6", 4, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "lo", NULL);
+	pass &= ctrl_match("IPv6", 4, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv6: Reference ID 5 */
+	set_ctrl_args(&reference, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv6", 5, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+	pass &= ctrl_match("IPv6", 5, 1, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv6", 5, 2, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 5, 3, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+	pass &= ctrl_match("IPv6", 5, 4, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 5, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv6", 5, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "lo", NULL);
+	pass &= ctrl_match("IPv6", 5, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "lo", NULL);
+	pass &= ctrl_match("IPv6", 5, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv6: Reference ID 6 */
+	set_ctrl_args(&reference, "tcp", "aaaa::bbbb", "8009", NULL, NULL, "traddr=aaaa::bbbb,trsvcid=8009,src_addr=fe80::dead:beef");
+
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv6", 6, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+	pass &= ctrl_match("IPv6", 6, 1, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv6", 6, 2, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 6, 3, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+	pass &= ctrl_match("IPv6", 6, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 6, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv6", 6, 6, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "lo", NULL);
+	pass &= ctrl_match("IPv6", 6, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "lo", NULL);
+	pass &= ctrl_match("IPv6", 6, 8, &reference, &candidate, false);
+
+	/*******************************************************************/
+	/* IPv6: Reference ID 7 */
+	set_ctrl_args(&reference, "tcp", "aaaa::bbbb", "8009", NULL, NULL, "traddr=aaaa::bbbb,trsvcid=8009,src_addr=::1");
+
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, NULL, NULL);
+	pass &= ctrl_match("IPv6", 7, 0, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", NULL, NULL);
+	pass &= ctrl_match("IPv6", 7, 1, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "eth0", NULL);
+	pass &= ctrl_match("IPv6", 7, 2, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 7, 3, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", NULL, NULL);
+	pass &= ctrl_match("IPv6", 7, 4, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "eth0", NULL);
+	pass &= ctrl_match("IPv6", 7, 5, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", NULL, "lo", NULL);
+	pass &= ctrl_match("IPv6", 7, 6, &reference, &candidate, true);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:beef", "lo", NULL);
+	pass &= ctrl_match("IPv6", 7, 7, &reference, &candidate, false);
+	set_ctrl_args(&candidate, "tcp", "aaaa::bbbb", "8009", "fe80::dead:cafe", "lo", NULL);
+	pass &= ctrl_match("IPv6", 7, 8, &reference, &candidate, false);
+
+	return pass;
+}
+
+
 int main(int argc, char *argv[])
 {
-	int exit_val = EXIT_SUCCESS;
+	bool pass = true;
 
-	test_lookup_1();
-	test_lookup_2();
+	pass &= test_lookup();
+	pass &= test_src_addr();
+	pass &= test_ctrl_match_fc();
+	pass &= test_ctrl_match_rdma();
+	pass &= test_ctrl_match_tcp();
 
-	if (!test_src_addr()) exit_val = EXIT_FAILURE;
+	fflush(stdout);
 
-	exit(exit_val);
+	exit(pass ? EXIT_SUCCESS : EXIT_FAILURE);
 }
