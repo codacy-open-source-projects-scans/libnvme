@@ -47,7 +47,7 @@
 const char *nvmf_dev = "/dev/nvme-fabrics";
 
 /**
- * strchomp() - Strip trailing white space
+ * strchomp() - Strip trailing spaces
  * @str: String to strip
  * @max: Maximum length of string
  */
@@ -55,11 +55,8 @@ static void strchomp(char *str, int max)
 {
 	int i;
 
-	for (i = max - 1; i >= 0; i--) {
-		if (str[i] != '\0' && str[i] != ' ')
-			return;
-		else
-			str[i] = '\0';
+	for (i = max - 1; i >= 0 && str[i] == ' '; i--) {
+		str[i] = '\0';
 	}
 }
 
@@ -837,6 +834,7 @@ static const char *lookup_context(nvme_root_t r, nvme_ctrl_t c)
 					       NULL,
 					       NULL,
 					       nvme_ctrl_get_trsvcid(c),
+					       NULL,
 					       NULL))
 				return nvme_subsystem_get_application(s);
 		}
@@ -866,6 +864,7 @@ int nvmf_add_ctrl(nvme_host_t h, nvme_ctrl_t c,
 					nvme_ctrl_get_host_traddr(c),
 					nvme_ctrl_get_host_iface(c),
 					nvme_ctrl_get_trsvcid(c),
+					NULL,
 					NULL);
 		if (fc) {
 			const char *key;
@@ -1169,30 +1168,10 @@ out_free_log:
 	return NULL;
 }
 
-static void sanitize_discovery_log_entry(struct nvmf_disc_log_entry  *e)
+static void sanitize_discovery_log_entry(struct nvmf_disc_log_entry *e)
 {
-	switch (e->trtype) {
-	case NVMF_TRTYPE_RDMA:
-	case NVMF_TRTYPE_TCP:
-		switch (e->adrfam) {
-		case NVMF_ADDR_FAMILY_IP4:
-		case NVMF_ADDR_FAMILY_IP6:
-			strchomp(e->traddr, NVMF_TRADDR_SIZE);
-			strchomp(e->trsvcid, NVMF_TRSVCID_SIZE);
-			break;
-		}
-		break;
-        case NVMF_TRTYPE_FC:
-		switch (e->adrfam) {
-		case NVMF_ADDR_FAMILY_FC:
-			strchomp(e->traddr, NVMF_TRADDR_SIZE);
-			break;
-		}
-		break;
-	case NVMF_TRTYPE_LOOP:
-		strchomp(e->traddr, NVMF_TRADDR_SIZE);
-		break;
-	}
+	strchomp(e->trsvcid, sizeof(e->trsvcid));
+	strchomp(e->traddr, sizeof(e->traddr));
 }
 
 int nvmf_get_discovery_log(nvme_ctrl_t c, struct nvmf_discovery_log **logp,
