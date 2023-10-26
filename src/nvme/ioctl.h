@@ -1929,6 +1929,41 @@ static inline int nvme_get_log_boot_partition(int fd, bool rae,
 }
 
 /**
+ * nvme_get_log_phy_rx_eom() - Retrieve Physical Interface Receiver Eye Opening Measurement Log
+ * @fd:		File descriptor of nvme device
+ * @lsp:	Log specific, controls action and measurement quality
+ * @controller:	Target controller ID
+ * @len:	The allocated size, minimum
+ *		struct nvme_phy_rx_eom_log
+ * @log:	User address to store the log page
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise
+ */
+static inline int nvme_get_log_phy_rx_eom(int fd, __u8 lsp, __u16 controller,
+				__u32 len, struct nvme_phy_rx_eom_log *log)
+{
+	struct nvme_get_log_args args = {
+		.lpo = 0,
+		.result = NULL,
+		.log = log,
+		.args_size = sizeof(args),
+		.fd = fd,
+		.timeout = NVME_DEFAULT_IOCTL_TIMEOUT,
+		.lid = NVME_LOG_LID_PHY_RX_EOM,
+		.len = len,
+		.nsid = NVME_NSID_NONE,
+		.csi = NVME_CSI_NVM,
+		.lsi = controller,
+		.lsp = lsp,
+		.uuidx = NVME_UUID_NONE,
+		.rae = false,
+		.ot = false,
+	};
+	return nvme_get_log_page(fd, NVME_LOG_PAGE_PDU_SIZE, &args);
+}
+
+/**
  * nvme_get_log_discovery() - Retrieve Discovery log page
  * @fd:		File descriptor of nvme device
  * @rae:	Retain asynchronous events
@@ -2240,7 +2275,7 @@ int nvme_set_features_power_mgmt(int fd, __u8 ps, __u8 wh, bool save,
  * Return: The nvme command status if a response was received (see
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
-int nvme_set_features_lba_range(int fd, __u32 nsid, __u32 nr_ranges, bool save,
+int nvme_set_features_lba_range(int fd, __u32 nsid, __u8 nr_ranges, bool save,
 				struct nvme_lba_range_type *data, __u32 *result);
 
 /**
@@ -2516,6 +2551,10 @@ int nvme_set_features_host_id(int fd, bool exhid, bool save, __u8 *hostid);
 
 /**
  * nvme_set_features_resv_mask() - Set reservation notification mask feature
+ *
+ * Deprecated: doesn't support specifying a NSID.
+ * Use nvme_set_features_resv_mask2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @mask:	Reservation Notification Mask Field
  * @save:	Save value across power states
@@ -2524,10 +2563,29 @@ int nvme_set_features_host_id(int fd, bool exhid, bool save, __u8 *hostid);
  * Return: The nvme command status if a response was received (see
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
-int nvme_set_features_resv_mask(int fd, __u32 mask, bool save, __u32 *result);
+int nvme_set_features_resv_mask(int fd, __u32 mask, bool save, __u32 *result)
+	__attribute__((deprecated));
+
+/**
+ * nvme_set_features_resv_mask2() - Set reservation notification mask feature
+ * @fd:		File descriptor of nvme device
+ * @nsid:	Namespace ID
+ * @mask:	Reservation Notification Mask Field
+ * @save:	Save value across power states
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_set_features_resv_mask2(int fd, __u32 nsid, __u32 mask, bool save,
+				 __u32 *result);
 
 /**
  * nvme_set_features_resv_persist() - Set persist through power loss feature
+ *
+ * Deprecated: doesn't support specifying a NSID.
+ * Use nvme_set_features_resv_persist2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @ptpl:	Persist Through Power Loss
  * @save:	Save value across power states
@@ -2536,10 +2594,29 @@ int nvme_set_features_resv_mask(int fd, __u32 mask, bool save, __u32 *result);
  * Return: The nvme command status if a response was received (see
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
-int nvme_set_features_resv_persist(int fd, bool ptpl, bool save, __u32 *result);
+int nvme_set_features_resv_persist(int fd, bool ptpl, bool save, __u32 *result)
+	 __attribute__((deprecated));
+
+/**
+ * nvme_set_features_resv_persist2() - Set persist through power loss feature
+ * @fd:		File descriptor of nvme device
+ * @nsid:	Namespace ID
+ * @ptpl:	Persist Through Power Loss
+ * @save:	Save value across power states
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_set_features_resv_persist2(int fd, __u32 nsid, bool ptpl, bool save,
+				    __u32 *result);
 
 /**
  * nvme_set_features_write_protect() - Set write protect feature
+ *
+ * Deprecated: doesn't support specifying a NSID.
+ * Use nvme_set_features_write_protect2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @state:	Write Protection State
  * @save:	Save value across power states
@@ -2549,7 +2626,34 @@ int nvme_set_features_resv_persist(int fd, bool ptpl, bool save, __u32 *result);
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
 int nvme_set_features_write_protect(int fd, enum nvme_feat_nswpcfg_state state,
-				    bool save, __u32 *result);
+				    bool save, __u32 *result)
+	__attribute__((deprecated));
+
+/**
+ * nvme_set_features_write_protect2() - Set write protect feature
+ * @fd:		File descriptor of nvme device
+ * @nsid:	Namespace ID
+ * @state:	Write Protection State
+ * @save:	Save value across power states
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_set_features_write_protect2(int fd, __u32 nsid,
+				     enum nvme_feat_nswpcfg_state state,
+				     bool save, __u32 *result);
+
+/**
+ * nvme_set_features_iocs_profile() - Set I/O command set profile feature
+ * @fd:		File descriptor of nvme device
+ * @iocsi:	I/O Command Set Combination Index
+ * @save:	Save value across power states
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_set_features_iocs_profile(int fd, __u16 iocsi, bool save);
 
 /**
  * nvme_get_features() - Retrieve a feature attribute
@@ -2634,6 +2738,10 @@ int nvme_get_features_power_mgmt(int fd, enum nvme_get_features_sel sel,
 
 /**
  * nvme_get_features_lba_range() - Get LBA range feature
+ *
+ * Deprecated: doesn't support specifying a NSID.
+ * Use nvme_get_features_lba_range2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
  * @data:	User address of feature data, if applicable
@@ -2644,7 +2752,22 @@ int nvme_get_features_power_mgmt(int fd, enum nvme_get_features_sel sel,
  */
 int nvme_get_features_lba_range(int fd, enum nvme_get_features_sel sel,
 				struct nvme_lba_range_type *data,
-				__u32 *result);
+				__u32 *result) __attribute__((deprecated));
+
+/**
+ * nvme_get_features_lba_range2() - Get LBA range feature
+ * @fd:		File descriptor of nvme device
+ * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
+ * @nsid:	Namespace ID
+ * @data:	Buffer to receive LBA Range Type data structure
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_get_features_lba_range2(int fd, enum nvme_get_features_sel sel,
+				 __u32 nsid, struct nvme_lba_range_type *data,
+				 __u32 *result);
 
 /**
  * nvme_get_features_temp_thresh() - Get temperature threshold feature
@@ -2660,6 +2783,10 @@ int nvme_get_features_temp_thresh(int fd, enum nvme_get_features_sel sel,
 
 /**
  * nvme_get_features_err_recovery() - Get error recovery feature
+ *
+ * Deprecated: doesn't support specifying a NSID.
+ * Use nvme_get_features_err_recovery2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
  * @result:	The command completion result from CQE dword0
@@ -2668,7 +2795,20 @@ int nvme_get_features_temp_thresh(int fd, enum nvme_get_features_sel sel,
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
 int nvme_get_features_err_recovery(int fd, enum nvme_get_features_sel sel,
-				   __u32 *result);
+				   __u32 *result) __attribute__((deprecated));
+
+/**
+ * nvme_get_features_err_recovery2() - Get error recovery feature
+ * @fd:		File descriptor of nvme device
+ * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
+ * @nsid:	Namespace ID
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_get_features_err_recovery2(int fd, enum nvme_get_features_sel sel,
+				    __u32 nsid, __u32 *result);
 
 /**
  * nvme_get_features_volatile_wc() - Get volatile write cache feature
@@ -2758,6 +2898,10 @@ int nvme_get_features_auto_pst(int fd, enum nvme_get_features_sel sel,
 
 /**
  * nvme_get_features_host_mem_buf() - Get host memory buffer feature
+ *
+ * Deprecated: doesn't fetch the Host Memory Buffer Attributes data structure.
+ * Use nvme_get_features_host_mem_buf2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
  * @result:	The command completion result from CQE dword0
@@ -2766,7 +2910,21 @@ int nvme_get_features_auto_pst(int fd, enum nvme_get_features_sel sel,
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
 int nvme_get_features_host_mem_buf(int fd, enum nvme_get_features_sel sel,
-				   __u32 *result);
+				   __u32 *result) __attribute__((deprecated));
+
+/**
+ * nvme_get_features_host_mem_buf2() - Get host memory buffer feature
+ * @fd:		File descriptor of nvme device
+ * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
+ * @attrs:	Buffer for returned Host Memory Buffer Attributes
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_get_features_host_mem_buf2(int fd, enum nvme_get_features_sel sel,
+				    struct nvme_host_mem_buf_attrs *attrs,
+				    __u32 *result);
 
 /**
  * nvme_get_features_timestamp() - Get timestamp feature
@@ -2931,6 +3089,10 @@ int nvme_get_features_host_id(int fd, enum nvme_get_features_sel sel,
 
 /**
  * nvme_get_features_resv_mask() - Get reservation mask feature
+ *
+ * Deprecated: doesn't support specifying a NSID.
+ * Use nvme_get_features_resv_mask2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
  * @result:	The command completion result from CQE dword0
@@ -2939,10 +3101,27 @@ int nvme_get_features_host_id(int fd, enum nvme_get_features_sel sel,
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
 int nvme_get_features_resv_mask(int fd, enum nvme_get_features_sel sel,
-				__u32 *result);
+				__u32 *result) __attribute__((deprecated));
+
+/**
+ * nvme_get_features_resv_mask2() - Get reservation mask feature
+ * @fd:		File descriptor of nvme device
+ * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
+ * @nsid:	Namespace ID
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_get_features_resv_mask2(int fd, enum nvme_get_features_sel sel,
+				 __u32 nsid, __u32 *result);
 
 /**
  * nvme_get_features_resv_persist() - Get reservation persist feature
+ *
+ * Deprecated: doesn't support specifying a NSID.
+ * Use nvme_get_features_resv_persist2() instead.
+ *
  * @fd:		File descriptor of nvme device
  * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
  * @result:	The command completion result from CQE dword0
@@ -2951,7 +3130,20 @@ int nvme_get_features_resv_mask(int fd, enum nvme_get_features_sel sel,
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
 int nvme_get_features_resv_persist(int fd, enum nvme_get_features_sel sel,
-				   __u32 *result);
+				   __u32 *result) __attribute__((deprecated));
+
+/**
+ * nvme_get_features_resv_persist2() - Get reservation persist feature
+ * @fd:		File descriptor of nvme device
+ * @sel:	Select which type of attribute to return, see &enum nvme_get_features_sel
+ * @nsid:	Namespace ID
+ * @result:	The command completion result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_get_features_resv_persist2(int fd, enum nvme_get_features_sel sel,
+				    __u32 nsid, __u32 *result);
 
 /**
  * nvme_get_features_write_protect() - Get write protect feature

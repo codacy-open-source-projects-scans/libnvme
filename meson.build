@@ -8,7 +8,7 @@
 project(
     'libnvme', ['c'],
     meson_version: '>= 0.50.0',
-    version: '1.5',
+    version: '1.6',
     license: 'LGPL-2.1-or-later',
     default_options: [
         'c_std=gnu99',
@@ -230,6 +230,16 @@ conf.set(
     ),
     description: 'Is network address and service translation available'
 )
+conf.set(
+    'HAVE_GLIBC_IOCTL',
+    cc.compiles(
+        '''#include <sys/ioctl.h>
+        int ioctl(int fd, unsigned long request, ...);
+        ''',
+        name: 'ioctl has glibc-style prototype'
+    ),
+    description: 'Is ioctl the glibc interface (rather than POSIX)'
+)
 
 if cc.has_function_attribute('fallthrough')
   conf.set('fallthrough', '__attribute__((__fallthrough__))')
@@ -263,7 +273,9 @@ subdir('internal')
 subdir('ccan')
 subdir('src')
 subdir('libnvme')
-subdir('test')
+if get_option('tests')
+    subdir('test')
+endif
 subdir('examples')
 subdir('doc')
 
