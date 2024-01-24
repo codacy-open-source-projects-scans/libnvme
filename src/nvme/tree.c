@@ -122,7 +122,8 @@ static void cleanup_dirents(struct dirents *ents)
 nvme_host_t nvme_default_host(nvme_root_t r)
 {
 	struct nvme_host *h;
-	_cleanup_free_ char *hostnqn, *hostid;
+	_cleanup_free_ char *hostnqn = NULL;
+	_cleanup_free_ char *hostid = NULL;
 
 	hostnqn = nvmf_hostnqn_from_file();
 	if (!hostnqn)
@@ -1853,7 +1854,7 @@ static nvme_ctrl_t nvme_ctrl_alloc(nvme_root_t r, nvme_subsystem_t s,
 	nvme_ctrl_t c, p;
 	_cleanup_free_ char *addr = NULL, *address = NULL;
 	char *a, *e;
-	_cleanup_free_ char *transport;
+	_cleanup_free_ char *transport = NULL;
 	char *traddr = NULL, *trsvcid = NULL;
 	char *host_traddr = NULL, *host_iface = NULL;
 	int ret;
@@ -2436,7 +2437,7 @@ static int nvme_ns_init(const char *path, struct nvme_ns *ns)
 	struct sysfs_attr_table base[] = {
 		{ &ns->nsid,      nvme_strtou32,  true, "nsid" },
 		{ &ns->lba_count, nvme_strtou64,  true, "size" },
-		{ &ns->lba_size,  nvme_strtou64,  true, "queue/physical_block_size" },
+		{ &ns->lba_size,  nvme_strtou64,  true, "queue/logical_block_size" },
 		{ ns->eui64,      nvme_strtoeuid, false, "eui" },
 		{ ns->nguid,      nvme_strtouuid, false, "nguid" },
 		{ ns->uuid,       nvme_strtouuid, false, "uuid" }

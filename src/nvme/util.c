@@ -757,7 +757,7 @@ char *kv_keymatch(const char *kv, const char *key)
 static size_t read_file(const char * fname, char *buffer, size_t *bufsz)
 {
 	char   *p;
-	_cleanup_file_ FILE *file;
+	_cleanup_file_ FILE *file = NULL;
 	size_t len;
 
 	file = fopen(fname, "re");
@@ -806,7 +806,7 @@ size_t get_entity_name(char *buffer, size_t bufsz)
 
 size_t get_entity_version(char *buffer, size_t bufsz)
 {
-	_cleanup_file_ FILE *file;
+	_cleanup_file_ FILE *file = NULL;
 	size_t  num_bytes = 0;
 
 	/* /proc/sys/kernel/ostype typically contains the string "Linux" */
@@ -928,7 +928,7 @@ int nvme_uuid_from_string(const char *str, unsigned char uuid[NVME_UUID_LEN])
 
 int nvme_uuid_random(unsigned char uuid[NVME_UUID_LEN])
 {
-	_cleanup_fd_ int f;
+	_cleanup_fd_ int f = -1;
 	ssize_t n;
 
 	f = open("/dev/urandom", O_RDONLY);
@@ -949,6 +949,25 @@ int nvme_uuid_random(unsigned char uuid[NVME_UUID_LEN])
 	uuid[8] = (uuid[8] & 0x3f) | 0x80;
 
 	return 0;
+}
+
+int nvme_uuid_find(struct nvme_id_uuid_list *uuid_list, const unsigned char uuid[NVME_UUID_LEN])
+{
+	const unsigned char uuid_end[NVME_UUID_LEN] = {0};
+
+	if ((!uuid_list) || (!uuid)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	for (int i = 0; i < NVME_ID_UUID_LIST_MAX; i++) {
+		if (memcmp(uuid, &uuid_list->entry[i].uuid, NVME_UUID_LEN) == 0)
+			return i + 1;
+		if (memcmp(uuid_end, &uuid_list->entry[i].uuid, NVME_UUID_LEN) == 0)
+			break;
+	}
+	errno = ENOENT;
+	return -1;
 }
 
 #ifdef HAVE_NETDB
