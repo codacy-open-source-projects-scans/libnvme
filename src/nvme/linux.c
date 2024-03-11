@@ -31,6 +31,8 @@
 
 #ifdef CONFIG_KEYUTILS
 #include <keyutils.h>
+
+#define NVME_TLS_DEFAULT_KEYRING ".nvme"
 #endif
 
 #include <ccan/endian/endian.h>
@@ -41,6 +43,7 @@
 #include "log.h"
 #include "private.h"
 #include "base64.h"
+#include "crc32.h"
 
 static int __nvme_open(const char *name)
 {
@@ -1158,6 +1161,8 @@ long nvme_lookup_keyring(const char *keyring)
 {
 	key_serial_t keyring_id;
 
+	if (!keyring)
+		keyring = NVME_TLS_DEFAULT_KEYRING;
 	keyring_id = find_key_by_type_and_desc("keyring", keyring, 0);
 	if (keyring_id < 0)
 		return 0;
@@ -1187,10 +1192,117 @@ int nvme_set_keyring(long key_id)
 {
 	long err;
 
+	if (key_id == 0) {
+		key_id = nvme_lookup_keyring(NULL);
+		if (key_id == 0) {
+			errno = ENOKEY;
+			return -1;
+		}
+	}
+
 	err = keyctl_link(key_id, KEY_SPEC_SESSION_KEYRING);
 	if (err < 0)
 		return -1;
 	return 0;
+}
+
+unsigned char *nvme_read_key(long keyring_id, long key_id, int *len)
+{
+	void *buffer;
+	int ret;
+
+	ret = nvme_set_keyring(keyring_id);
+	if (ret < 0) {
+		errno = -ret;
+		return NULL;
+	}
+	ret = keyctl_read_alloc(key_id, &buffer);
+	if (ret < 0) {
+		errno = -ret;
+		buffer = NULL;
+	} else
+		*len = ret;
+
+	return buffer;
+}
+
+long nvme_update_key(long keyring_id, const char *key_type,
+		     const char *identity, unsigned char *key_data,
+		     int key_len)
+{
+	long key;
+
+	key = keyctl_search(keyring_id, key_type, identity, 0);
+	if (key > 0) {
+		if (keyctl_revoke(key) < 0)
+			return 0;
+	}
+	key = add_key(key_type, identity,
+		      key_data, key_len, keyring_id);
+	if (key < 0)
+		key = 0;
+	return key;
+}
+
+struct __scan_keys_data {
+	nvme_scan_tls_keys_cb_t cb;
+	key_serial_t keyring;
+	void *data;
+};
+
+int __scan_keys_cb(key_serial_t parent, key_serial_t key,
+		   char *desc, int desc_len, void *data)
+{
+	struct __scan_keys_data *d = data;
+	int ver, hmac, uid, gid, perm;
+	char type, *ptr;
+
+	if (desc_len < 6)
+		return 0;
+	if (sscanf(desc, "psk;%d;%d;%08x;NVMe%01d%c%02d %*s",
+		   &uid, &gid, &perm, &ver, &type, &hmac) != 6)
+		return 0;
+	/* skip key type */
+	ptr = strchr(desc, ';');
+	if (!ptr)
+		return 0;
+	/* skip key uid */
+	ptr = strchr(ptr + 1, ';');
+	if (!ptr)
+		return 0;
+	/* skip key gid */
+	ptr = strchr(ptr + 1, ';');
+	if (!ptr)
+		return 0;
+	/* skip key permissions */
+	ptr = strchr(ptr + 1, ';');
+	if (!ptr)
+		return 0;
+	/* Only use the key description for the callback */
+	(d->cb)(d->keyring, key, ptr + 1, strlen(ptr) - 1, d->data);
+	return 1;
+}
+
+int nvme_scan_tls_keys(const char *keyring, nvme_scan_tls_keys_cb_t cb,
+		       void *data)
+{
+	struct __scan_keys_data d;
+	key_serial_t keyring_id = nvme_lookup_keyring(keyring);
+	int ret;
+
+	if (!keyring_id) {
+		errno = EINVAL;
+		return -1;
+	}
+	ret = nvme_set_keyring(keyring_id);
+	if (ret < 0)
+		return ret;
+
+	d.keyring = keyring_id;
+	d.cb = cb;
+	d.data = data;
+	ret = recursive_key_scan(keyring_id, __scan_keys_cb, &d);
+	return ret;
 }
 
 long nvme_insert_tls_key_versioned(const char *keyring, const char *key_type,
@@ -1202,21 +1314,28 @@ long nvme_insert_tls_key_versioned(const char *keyring, const char *key_type,
 	_cleanup_free_ char *identity = NULL;
 	size_t identity_len;
 	_cleanup_free_ unsigned char *psk = NULL;
-	int ret = -1;
+	int ret;
 
 	keyring_id = nvme_lookup_keyring(keyring);
-	if (keyring_id == 0)
-		return -1;
+	if (keyring_id == 0) {
+		errno = ENOKEY;
+		return 0;
+	}
+
+	ret = nvme_set_keyring(keyring_id);
+	if (ret < 0)
+		return 0;
 
 	identity_len = nvme_identity_len(hmac, version, hostnqn, subsysnqn);
 	if (identity_len < 0)
-		return -1;
+		return 0;
 
 	identity = malloc(identity_len);
 	if (!identity) {
 		errno = ENOMEM;
-		return -1;
+		return 0;
 	}
+	memset(identity, 0, identity_len);
 
 	psk = malloc(key_len);
 	if (!psk) {
@@ -1226,19 +1345,13 @@ long nvme_insert_tls_key_versioned(const char *keyring, const char *key_type,
 	memset(psk, 0, key_len);
 	ret = derive_nvme_keys(hostnqn, subsysnqn, identity, version, hmac,
 			       configured_key, psk, key_len);
-	if (ret != key_len)
+	if (ret != key_len) {
+		errno = ENOKEY;
 		return 0;
-
-	key = keyctl_search(keyring_id, key_type, identity, 0);
-	if (key > 0) {
-		if (keyctl_update(key, psk, key_len) < 0)
-			key = 0;
-	} else {
-		key = add_key(key_type, identity,
-			      psk, key_len, keyring_id);
-		if (key < 0)
-			key = 0;
 	}
+
+	key = nvme_update_key(keyring_id, key_type, identity,
+			      psk, key_len);
 	return key;
 }
 
@@ -1275,6 +1388,27 @@ int nvme_set_keyring(long key_id)
 	return -1;
 }
 
+unsigned char *nvme_read_key(long keyring_id, long key_id, int *len)
+{
+	errno = ENOTSUP;
+	return NULL;
+}
+
+long nvme_update_key(long keyring_id, const char *key_type,
+		     const char *identity, unsigned char *key_data,
+		     int key_len)
+{
+	errno = ENOTSUP;
+	return 0;
+}
+
+int nvme_scan_tls_keys(const char *keyring, nvme_scan_tls_keys_cb_t cb,
+		       void *data)
+{
+	errno = ENOTSUP;
+	return -1;
+}
+
 long nvme_insert_tls_key_versioned(const char *keyring, const char *key_type,
 				   const char *hostnqn, const char *subsysnqn,
 				   int version, int hmac,
@@ -1294,4 +1428,109 @@ long nvme_insert_tls_key(const char *keyring, const char *key_type,
 	return nvme_insert_tls_key_versioned(keyring, key_type,
 					     hostnqn, subsysnqn, 0, hmac,
 					     configured_key, key_len);
+}
+
+char *nvme_export_tls_key(const unsigned char *key_data, int key_len)
+{
+	unsigned char raw_secret[52];
+	char *encoded_key;
+	unsigned int raw_len, encoded_len, len;
+	unsigned long crc = crc32(0L, NULL, 0);
+
+	if (key_len == 32) {
+		raw_len = 32;
+	} else if (key_len == 48) {
+		raw_len = 48;
+	} else {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	memcpy(raw_secret, key_data, raw_len);
+	crc = crc32(crc, raw_secret, raw_len);
+	raw_secret[raw_len++] = crc & 0xff;
+	raw_secret[raw_len++] = (crc >> 8) & 0xff;
+	raw_secret[raw_len++] = (crc >> 16) & 0xff;
+	raw_secret[raw_len++] = (crc >> 24) & 0xff;
+
+	encoded_len = (raw_len * 2) + 20;
+	encoded_key = malloc(encoded_len);
+	if (!encoded_key) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	memset(encoded_key, 0, encoded_len);
+	len = sprintf(encoded_key, "NVMeTLSkey-1:%02x:",
+		      key_len == 32 ? 1 : 2);
+	len += base64_encode(raw_secret, raw_len, encoded_key + len);
+	encoded_key[len++] = ':';
+	encoded_key[len++] = '\0';
+
+	return encoded_key;
+}
+
+unsigned char *nvme_import_tls_key(const char *encoded_key, int *key_len,
+				   unsigned int *hmac)
+{
+	unsigned char decoded_key[128], *key_data;
+	unsigned int crc = crc32(0L, NULL, 0);
+	unsigned int key_crc;
+	int err, decoded_len;
+
+	if (sscanf(encoded_key, "NVMeTLSkey-1:%02x:*s", &err) != 1) {
+		errno = EINVAL;
+		return NULL;
+	}
+	switch (err) {
+	case 1:
+		if (strlen(encoded_key) != 65) {
+			errno = EINVAL;
+			return NULL;
+		}
+		break;
+	case 2:
+		if (strlen(encoded_key) != 89) {
+			errno = EINVAL;
+			return NULL;
+		}
+		break;
+	default:
+		errno = EINVAL;
+		return NULL;
+	}
+
+	*hmac = err;
+	err = base64_decode(encoded_key + 16, strlen(encoded_key) - 17,
+			    decoded_key);
+	if (err < 0) {
+		errno = ENOKEY;
+		return NULL;
+	}
+	decoded_len = err;
+	decoded_len -= 4;
+	if (decoded_len != 32 && decoded_len != 48) {
+		errno = ENOKEY;
+		return NULL;
+	}
+	crc = crc32(crc, decoded_key, decoded_len);
+	key_crc = ((u_int32_t)decoded_key[decoded_len]) |
+		((u_int32_t)decoded_key[decoded_len + 1] << 8) |
+		((u_int32_t)decoded_key[decoded_len + 2] << 16) |
+		((u_int32_t)decoded_key[decoded_len + 3] << 24);
+	if (key_crc != crc) {
+		nvme_msg(NULL, LOG_ERR, "CRC mismatch (key %08x, crc %08x)",
+			 key_crc, crc);
+		errno = ENOKEY;
+		return NULL;
+	}
+
+	key_data = malloc(decoded_len);
+	if (!key_data) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	memcpy(key_data, decoded_key, decoded_len);
+
+	*key_len = decoded_len;
+	return key_data;
 }

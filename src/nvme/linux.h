@@ -274,6 +274,72 @@ long nvme_lookup_key(const char *type, const char *identity);
 int nvme_set_keyring(long keyring_id);
 
 /**
+ * nvme_read_key() - Read key raw data
+ * @keyring_id:     Id of the keyring holding %key_id
+ * @key_id:      Key id
+ * @len:         Length of the returned data
+ *
+ * Links the keyring specified by @keyring_id into the session
+ * keyring and reads the payload of the key specified by @key_id.
+ * @len holds the size of the returned buffer.
+ * If @keyring is 0 the default keyring '.nvme' is used.
+ *
+ * Return: Pointer to the payload on success,
+ * or NULL with errno set otherwise.
+ */
+unsigned char *nvme_read_key(long keyring_id, long key_id, int *len);
+
+/**
+ * nvme_update_key() - Update key raw data
+ * @keyring_id:  Id of the keyring holding %key_id
+ * @key_type:    Type of the key to insert
+ * @identity:    Key identity string
+ * @key_data:    Raw data of the key
+ * @key_len:     Length of @key_data
+ *
+ * Links the keyring specified by @keyring_id into the session
+ * keyring and updates the key reference by @identity with @key_data.
+ * The old key with identity @identity will be revoked to make it
+ * inaccessible.
+ *
+ * Return: Key id of the new key or 0 with errno set otherwise.
+ */
+long nvme_update_key(long keyring_id, const char *key_type,
+		     const char *identity, unsigned char *key_data,
+		     int key_len);
+
+/**
+ * typedef nvme_scan_tls_keys_cb_t - Callback for iterating TLS keys
+ * @keyring:	Keyring which has been iterated
+ * @key:	Key for which the callback has been invoked
+ * @desc:	Description of the key
+ * @desc_len:	Length of @desc
+ * @data:	Pointer for caller data
+ *
+ * Called for each TLS PSK in the keyring.
+ */
+typedef void (*nvme_scan_tls_keys_cb_t)(long keyring, long key,
+					char *desc, int desc_len, void *data);
+
+/**
+ * nvme_scan_tls_keys() - Iterate over TLS keys in a keyring
+ * @keyring:	Keyring holding TLS keys
+ * @cb:		Callback function
+ * @data:	Pointer for data to be passed to @cb
+ *
+ * Iterates @keyring and call @cb for each TLS key. When @keyring is NULL
+ * the default '.nvme' keyring is used.
+ * A TLS key must be of type 'psk' and the description must be of the
+ * form 'NVMe<0|1><R|G>0<1|2> <identity>', otherwise it will be skipped
+ * during iteration.
+ *
+ * Return: Number of keys for which @cb was called, or -1 with errno set
+ * on error.
+ */
+int nvme_scan_tls_keys(const char *keyring, nvme_scan_tls_keys_cb_t cb,
+		       void *data);
+
+/**
  * nvme_insert_tls_key() - Derive and insert TLS key
  * @keyring:    Keyring to use
  * @key_type:	Type of the resulting key
@@ -334,5 +400,69 @@ long nvme_insert_tls_key_versioned(const char *keyring, const char *key_type,
 char *nvme_generate_tls_key_identity(const char *hostnqn, const char *subsysnqn,
 				     int version, int hmac,
 				     unsigned char *configured_key, int key_len);
+
+/**
+ * nvme_export_tls_key() - Export a TLS key
+ * @key_data:	Raw data of the key
+ * @key_len:	Length of @key_data
+ *
+ * Returns @key_data in the PSK Interchange format as defined in section
+ * 3.6.1.5 of the NVMe TCP Transport specification.
+ *
+ * Return: The string containing the TLS identity or NULL with errno set
+ * on error. It is the responsibility of the caller to free the returned
+ * string.
+ */
+char *nvme_export_tls_key(const unsigned char *key_data, int key_len);
+
+/**
+ * nvme_import_tls_key() - Import a TLS key
+ * @encoded_key:	TLS key in PSK interchange format
+ * @key_len:		Length of the resulting key data
+ * @hmac:		HMAC algorithm
+ *
+ * Imports @key_data in the PSK Interchange format as defined in section
+ * 3.6.1.5 of the NVMe TCP Transport specification.
+ *
+ * Return: The raw data of the PSK or NULL with errno set on error. It is
+ * the responsibility of the caller to free the returned string.
+ */
+unsigned char *nvme_import_tls_key(const char *encoded_key, int *key_len,
+				   unsigned int *hmac);
+
+/**
+ * nvme_submit_passthru - Low level ioctl wrapper for passthru commands
+ * @fd:		File descriptor of the nvme device
+ * @ioctl_cmd:	IOCTL command id
+ * @cmd:	Passhtru command
+ * @result:	Optional field to return the result
+ *
+ * This is a low level library function which should not be used directly. It is
+ * exposed as weak symbol so that the user application is able to provide their own
+ * implementation of this function with additional debugging or logging code.
+ *
+ * Return: The value from the ioctl system call (see ioctl documentation)
+ */
+__attribute__((weak))
+int nvme_submit_passthru(int fd, unsigned long ioctl_cmd,
+			 struct nvme_passthru_cmd *cmd, __u32 *result);
+
+/**
+ * nvme_submit_passthru64 - Low level ioctl wrapper for passthru commands
+ * @fd:		File descriptor of the nvme device
+ * @ioctl_cmd:	IOCTL command id
+ * @cmd:	Passhtru command
+ * @result:	Optional field to return the result
+ *
+ * This is a low level library function which should not be used directly. It is
+ * exposed as weak symbol so that the user application is able to provide their own
+ * implementation of this function with additional debugging or logging code.
+ *
+ * Return: The value from the ioctl system call (see ioctl documentation)
+ */
+__attribute__((weak))
+int nvme_submit_passthru64(int fd, unsigned long ioctl_cmd,
+			   struct nvme_passthru_cmd64 *cmd,
+			   __u64 *result);
 
 #endif /* _LIBNVME_LINUX_H */

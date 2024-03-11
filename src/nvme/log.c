@@ -58,6 +58,8 @@ __nvme_msg(nvme_root_t r, int lvl,
 
 	if (r && lvl > r->log_level)
 		return;
+	if (!r && lvl > DEFAULT_LOGLEVEL)
+		return;
 
 	if (r && r->log_timestamp) {
 		struct timespec now;
@@ -99,7 +101,30 @@ void nvme_init_logging(nvme_root_t r, int lvl, bool log_pid, bool log_tstamp)
 	r->log_timestamp = log_tstamp;
 }
 
+int nvme_get_logging_level(nvme_root_t r, bool *log_pid, bool *log_tstamp)
+{
+	if (!r)
+		r = root;
+	if (!r)
+		return DEFAULT_LOGLEVEL;
+	if (log_pid)
+		*log_pid = r->log_pid;
+	if (log_tstamp)
+		*log_tstamp = r->log_timestamp;
+	return r->log_level;
+}
+
 void nvme_set_root(nvme_root_t r)
 {
 	root = r;
+}
+
+void nvme_set_debug(bool debug)
+{
+	root->log_level = debug ? LOG_DEBUG : DEFAULT_LOGLEVEL;
+}
+
+bool nvme_get_debug(void)
+{
+	return root->log_level == LOG_DEBUG;
 }
