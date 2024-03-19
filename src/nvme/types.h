@@ -3350,13 +3350,13 @@ struct nvme_persistent_event_log {
  * @NVME_PEL_RCI_RSVD_SHIFT:	Shift amount to get the reserved reporting context
  *				from the &struct nvme_persistent_event_log.rci field.
  * @NVME_PEL_RCI_RCPID_MASK:	Mask to get the reporting context port identifier from
- *				the &struct nvme_st_result.dsts field.
+ *				the &struct nvme_persistent_event_log.rci field.
  * @NVME_PEL_RCI_RCPIT_MASK:	Mask to get the reporting context port identifier type from
- *				the &struct nvme_st_result.dsts field.
+ *				the &struct nvme_persistent_event_log.rci field.
  * @NVME_PEL_RCI_RCE_MASK:	Mask to get the reporting context exists from
- *				the &struct nvme_st_result.dsts field.
+ *				the &struct nvme_persistent_event_log.rci field.
  * @NVME_PEL_RCI_RSVD_MASK:	Mask to get the reserved reporting context from
- *				the &struct nvme_st_result.dsts field.
+ *				the &struct nvme_persistent_event_log.rci field.
  */
 enum nvme_pel_rci {
 	NVME_PEL_RCI_RCPID_SHIFT	= 0,
@@ -3442,6 +3442,41 @@ enum nvme_persistent_event_types {
 	NVME_PEL_SET_FEATURE_EVENT		= 0x0b,
 	NVME_PEL_TELEMETRY_CRT			= 0x0c,
 	NVME_PEL_THERMAL_EXCURSION_EVENT	= 0x0d,
+};
+
+/**
+ * enum nvme_pel_ehai - This field indicates the persistent event header additional information
+ * @NVME_PEL_EHAI_PIT_SHIFT:	Shift amount to get the reporting context port identifier
+ *				from the &struct nvme_persistent_event_log.rci field.
+ * @NVME_PEL_EHAI_RSVD_SHIFT:	Shift amount to get the reserved reporting context
+ *				from the &struct nvme_persistent_event_log.rci field.
+ * @NVME_PEL_EHAI_PIT_MASK:	Mask to get the reporting context port identifier from
+ *				the &struct nvme_st_result.dsts field.
+ * @NVME_PEL_EHAI_RSVD_MASK:	Mask to get the reserved reporting context from
+ *				the &struct nvme_st_result.dsts field.
+ */
+enum nvme_pel_ehai {
+	NVME_PEL_EHAI_PIT_SHIFT		= 0,
+	NVME_PEL_EHAI_RSVD_SHIFT	= 2,
+	NVME_PEL_EHAI_PIT_MASK		= 0x3,
+	NVME_PEL_EHAI_RSVD_MASK		= 0x3f,
+};
+
+#define NVME_PEL_EHAI_PIT(ehai)		NVME_GET(ehai, PEL_EHAI_PIT)
+#define NVME_PEL_EHAI_RSVD(ehai)	NVME_GET(ehai, PEL_EHAI_RSVD)
+
+/**
+ * enum nvme_pel_ehai_pit - Persistent Event Header Additional Information - Port Identifier Type
+ * @NVME_PEL_EHAI_PIT_NOT_REPORTED:	PIT not reported and PELPID does not apply
+ * @NVME_PEL_EHAI_PIT_NSS_PORT:		NVM subsystem port
+ * @NVME_PEL_EHAI_PIT_NMI_PORT:		NVMe-MI port
+ * @NVME_PEL_EHAI_PIT_NOT_ASSOCIATED:	Event not associated with any port and PELPID does not apply
+ */
+enum nvme_pel_ehai_pit {
+	NVME_PEL_EHAI_PIT_NOT_REPORTED		= 0,
+	NVME_PEL_EHAI_PIT_NSS_PORT		= 1,
+	NVME_PEL_EHAI_PIT_NMI_PORT		= 2,
+	NVME_PEL_EHAI_PIT_NOT_ASSOCIATED	= 3,
 };
 
 /**
@@ -3615,6 +3650,34 @@ struct nvme_set_feature_event {
 	__le32	layout;
 	__le32	cdw_mem[0];
 };
+
+/**
+ * enum nvme_set_feat_event_layout - This field indicates the set feature event layout
+ * @NVME_SET_FEAT_EVENT_DW_COUNT_SHIFT:	Shift amount to get the Dword count from the
+ *					&struct nvme_set_feature_event.layout field.
+ * @NVME_SET_FEAT_EVENT_CC_DW0_SHIFT:	Shift amount to get the logged command completion Dword 0
+ *					from the &struct nvme_set_feature_event.layout field.
+ * @NVME_SET_FEAT_EVENT_MB_COUNT_SHIFT:	Shift amount to get the memory buffer count from
+ *					the &struct nvme_set_feature_event.layout field.
+ * @NVME_SET_FEAT_EVENT_DW_COUNT_MASK:	Mask to get the Dword count from the &struct
+ *					nvme_set_feature_event.layout field.
+ * @NVME_SET_FEAT_EVENT_CC_DW0_MASK:	Mask to get the logged command completion Dword 0 from
+ *					the &struct nvme_set_feature_event.layout field.
+ * @NVME_SET_FEAT_EVENT_MB_COUNT_MASK:	Mask to get the memory buffer count from the &struct
+ *					nvme_set_feature_event.layout field.
+ */
+enum nvme_set_feat_event_layout {
+	NVME_SET_FEAT_EVENT_DW_COUNT_SHIFT	= 0,
+	NVME_SET_FEAT_EVENT_CC_DW0_SHIFT	= 3,
+	NVME_SET_FEAT_EVENT_MB_COUNT_SHIFT	= 16,
+	NVME_SET_FEAT_EVENT_DW_COUNT_MASK	= 0x7,
+	NVME_SET_FEAT_EVENT_CC_DW0_MASK		= 0x1,
+	NVME_SET_FEAT_EVENT_MB_COUNT_MASK	= 0xffff,
+};
+
+#define NVME_SET_FEAT_EVENT_DW_COUNT(layout)	NVME_GET(layout, SET_FEAT_EVENT_DW_COUNT)
+#define NVME_SET_FEAT_EVENT_CC_DW0(layout)	NVME_GET(layout, SET_FEAT_EVENT_CC_DW0)
+#define NVME_SET_FEAT_EVENT_MB_COUNT(layout)	NVME_GET(layout, SET_FEAT_EVENT_MB_COUNT)
 
 /**
  * struct nvme_thermal_exc_event -  Thermal Excursion Event Data
@@ -3794,6 +3857,27 @@ struct nvme_boot_partition {
 	__u8	rsvd8[8];
 	__u8	boot_partition_data[];
 };
+
+/**
+ * enum nvme_boot_partition_info - This field indicates the boot partition information
+ * @NVME_BOOT_PARTITION_INFO_BPSZ_SHIFT:	Shift amount to get the boot partition size from
+ *						the &struct nvme_boot_partition.bpinfo field.
+ * @NVME_BOOT_PARTITION_INFO_ABPID_SHIFT:	Shift amount to get the active boot partition ID
+ *						from the &struct nvme_boot_partition.bpinfo field.
+ * @NVME_BOOT_PARTITION_INFO_BPSZ_MASK:		Mask to get the boot partition size from the
+ *						&struct nvme_boot_partition.bpinfo field.
+ * @NVME_BOOT_PARTITION_INFO_ABPID_MASK:	Mask to get the active boot partition ID from the
+ *						&struct nvme_boot_partition.bpinfo field.
+ */
+enum nvme_boot_partition_info {
+	NVME_BOOT_PARTITION_INFO_BPSZ_SHIFT	= 0,
+	NVME_BOOT_PARTITION_INFO_ABPID_SHIFT	= 31,
+	NVME_BOOT_PARTITION_INFO_BPSZ_MASK	= 0x7fff,
+	NVME_BOOT_PARTITION_INFO_ABPID_MASK	= 0x1,
+};
+
+#define NVME_BOOT_PARTITION_INFO_BPSZ(bpinfo)	NVME_GET(bpinfo, BOOT_PARTITION_INFO_BPSZ)
+#define NVME_BOOT_PARTITION_INFO_ABPID(bpinfo)	NVME_GET(bpinfo, BOOT_PARTITION_INFO_ABPID)
 
 /**
  * struct nvme_eom_lane_desc - EOM Lane Descriptor
