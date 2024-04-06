@@ -86,6 +86,7 @@ struct nvme_ctrl {
 	char *dhchap_key;
 	char *dhchap_ctrl_key;
 	char *cntrltype;
+	char *cntlid;
 	char *dctype;
 	char *phy_slot;
 	bool discovery_ctrl;
@@ -288,5 +289,8 @@ struct __mi_mctp_socket_ops {
 	int (*ioctl_tag)(int, unsigned long, struct mctp_ioc_tag_ctl *);
 };
 void __nvme_mi_mctp_set_ops(const struct __mi_mctp_socket_ops *newops);
+
+#define SECTOR_SIZE	512
+#define SECTOR_SHIFT	9
 
 #endif /* _LIBNVME_PRIVATE_H */

@@ -1008,6 +1008,11 @@ const char *nvme_ctrl_get_dhchap_host_key(nvme_ctrl_t c)
 	return c->dhchap_key;
 }
 
+const char *nvme_ctrl_get_cntlid(nvme_ctrl_t c)
+{
+	return c->cntlid;
+}
+
 void nvme_ctrl_set_dhchap_host_key(nvme_ctrl_t c, const char *key)
 {
 	if (c->dhchap_key) {
@@ -1117,6 +1122,7 @@ void nvme_deconfigure_ctrl(nvme_ctrl_t c)
 	FREE_CTRL_ATTR(c->address);
 	FREE_CTRL_ATTR(c->dctype);
 	FREE_CTRL_ATTR(c->cntrltype);
+	FREE_CTRL_ATTR(c->cntlid);
 	FREE_CTRL_ATTR(c->phy_slot);
 }
 
@@ -1800,6 +1806,7 @@ static int nvme_configure_ctrl(nvme_root_t r, nvme_ctrl_t c, const char *path,
 		}
 	}
 	c->cntrltype = nvme_get_ctrl_attr(c, "cntrltype");
+	c->cntlid = nvme_get_ctrl_attr(c, "cntlid");
 	c->dctype = nvme_get_ctrl_attr(c, "dctype");
 	c->phy_slot = nvme_ctrl_lookup_phy_slot(r, c->address);
 
@@ -2442,11 +2449,12 @@ static int nvme_ns_init(const char *path, struct nvme_ns *ns)
 {
 	_cleanup_free_ char *attr = NULL;
 	struct stat sb;
+	uint64_t size;
 	int ret;
 
 	struct sysfs_attr_table base[] = {
 		{ &ns->nsid,      nvme_strtou32,  true, "nsid" },
-		{ &ns->lba_count, nvme_strtou64,  true, "size" },
+		{ &size,          nvme_strtou64,  true, "size" },
 		{ &ns->lba_size,  nvme_strtou64,  true, "queue/logical_block_size" },
 		{ ns->eui64,      nvme_strtoeuid, false, "eui" },
 		{ ns->nguid,      nvme_strtouuid, false, "nguid" },
@@ -2458,6 +2466,11 @@ static int nvme_ns_init(const char *path, struct nvme_ns *ns)
 		return ret;
 
 	ns->lba_shift = GETSHIFT(ns->lba_size);
+	/*
+	 * size is in 512 bytes units and lba_count is in lba_size which are not
+	 * necessarily the same.
+	 */
+	ns->lba_count = size >> (ns->lba_shift -  SECTOR_SHIFT);
 
 	if (asprintf(&attr, "%s/csi", path) < 0)
 		return -errno;
