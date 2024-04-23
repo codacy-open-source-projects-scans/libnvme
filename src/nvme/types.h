@@ -336,17 +336,38 @@ enum nvme_cc {
 #define NVME_CC_IOCQES(cc)	NVME_GET(cc, CC_IOCQES)
 #define NVME_CC_CRIME(cc)	NVME_GET(cc, CC_CRIME)
 
+/**
+ * enum nvme_csts - This field indicates the controller status register
+ * @NVME_CSTS_RDY_SHIFT:	Shift amount to get the ready
+ * @NVME_CSTS_CFS_SHIFT:	Shift amount to get the controller fatal status
+ * @NVME_CSTS_SHST_SHIFT:	Shift amount to get the shutdown status
+ * @NVME_CSTS_NSSRO_SHIFT:	Shift amount to get the NVM subsystem reset occurred
+ * @NVME_CSTS_PP_SHIFT:		Shift amount to get the processing paused
+ * @NVME_CSTS_ST_SHIFT:		Shift amount to get the shutdown type
+ * @NVME_CSTS_RDY_MASK:		Mask to get the ready
+ * @NVME_CSTS_CFS_MASK:		Mask to get the controller fatal status
+ * @NVME_CSTS_SHST_MASK:	Mask to get the shutdown status
+ * @NVME_CSTS_NSSRO_MASK:	Mask to get the NVM subsystem reset occurred
+ * @NVME_CSTS_PP_MASK:		Mask to get the processing paused
+ * @NVME_CSTS_ST_MASK:		Mask to get the shutdown type
+ * @NVME_CSTS_SHST_NORMAL:	Normal operation
+ * @NVME_CSTS_SHST_OCCUR:	Shutdown processing occurring
+ * @NVME_CSTS_SHST_CMPLT:	Shutdown processing complete
+ * @NVME_CSTS_SHN_MASK:		Deprecated mask to get the shutdown status
+ */
 enum nvme_csts {
 	NVME_CSTS_RDY_SHIFT	= 0,
 	NVME_CSTS_CFS_SHIFT	= 1,
 	NVME_CSTS_SHST_SHIFT	= 2,
 	NVME_CSTS_NSSRO_SHIFT	= 4,
 	NVME_CSTS_PP_SHIFT	= 5,
+	NVME_CSTS_ST_SHIFT	= 6,
 	NVME_CSTS_RDY_MASK	= 0x1,
 	NVME_CSTS_CFS_MASK	= 0x1,
 	NVME_CSTS_SHST_MASK	= 0x3,
 	NVME_CSTS_NSSRO_MASK	= 0x1,
 	NVME_CSTS_PP_MASK	= 0x1,
+	NVME_CSTS_ST_MASK	= 0x1,
 	NVME_CSTS_SHST_NORMAL	= 0,
 	NVME_CSTS_SHST_OCCUR	= 1,
 	NVME_CSTS_SHST_CMPLT	= 2,
@@ -358,6 +379,7 @@ enum nvme_csts {
 #define NVME_CSTS_SHST(csts)	NVME_GET(csts, CSTS_SHST)
 #define NVME_CSTS_NSSRO(csts)	NVME_GET(csts, CSTS_NSSRO)
 #define NVME_CSTS_PP(csts)	NVME_GET(csts, CSTS_PP)
+#define NVME_CSTS_ST(csts)	NVME_GET(csts, CSTS_ST)
 
 enum nvme_aqa {
 	NVME_AQA_ASQS_SHIFT	= 0,
@@ -463,7 +485,7 @@ enum nvme_bprsel {
 	NVME_BPRSEL_BPROF_SHIFT		= 10,
 	NVME_BPRSEL_BPID_SHIFT		= 31,
 	NVME_BPRSEL_BPRSZ_MASK		= 0x3ff,
-	NVME_BPRSEL_BPROF_MASK		= 0xfff,
+	NVME_BPRSEL_BPROF_MASK		= 0xfffff,
 	NVME_BPRSEL_BPID_MASK		= 0x1,
 };
 
@@ -490,6 +512,44 @@ enum nvme_cmbsts {
 };
 
 #define NVME_CMBSTS_CBAI(cmbsts)	NVME_GET(cmbsts, CMBSTS_CBAI)
+
+enum nvme_unit {
+	NVME_UNIT_B	= 0,
+	NVME_UNIT_1K	= 1,
+	NVME_UNIT_1M	= 2,
+	NVME_UNIT_1G	= 3,
+};
+
+enum nvme_cmbebs {
+	NVME_CMBEBS_CMBSZU_SHIFT	= 0,
+	NVME_CMBEBS_RBB_SHIFT		= 4,
+	NVME_CMBEBS_CMBWBZ_SHIFT	= 8,
+	NVME_CMBEBS_CMBSZU_MASK		= 0xf,
+	NVME_CMBEBS_RBB_MASK		= 0x1,
+	NVME_CMBEBS_CMBWBZ_MASK		= 0xffffff,
+	NVME_CMBEBS_CMBSZU_B		= NVME_UNIT_B,
+	NVME_CMBEBS_CMBSZU_1K		= NVME_UNIT_1K,
+	NVME_CMBEBS_CMBSZU_1M		= NVME_UNIT_1M,
+	NVME_CMBEBS_CMBSZU_1G		= NVME_UNIT_1G,
+};
+
+#define NVME_CMBEBS_CMBSZU(cmbebs)	NVME_GET(cmbebs, CMBEBS_CMBSZU)
+#define NVME_CMBEBS_RBB(cmbebs)		NVME_GET(cmbebs, CMBEBS_RBB)
+#define NVME_CMBEBS_CMBWBZ(cmbebs)	NVME_GET(cmbebs, CMBEBS_CMBWBZ)
+
+enum nvme_cmbswtp {
+	NVME_CMBSWTP_CMBSWTU_SHIFT	= 0,
+	NVME_CMBSWTP_CMBSWTV_SHIFT	= 8,
+	NVME_CMBSWTP_CMBSWTU_MASK	= 0xf,
+	NVME_CMBSWTP_CMBSWTV_MASK	= 0xffffff,
+	NVME_CMBSWTP_CMBSWTU_B		= NVME_UNIT_B,
+	NVME_CMBSWTP_CMBSWTU_1K		= NVME_UNIT_1K,
+	NVME_CMBSWTP_CMBSWTU_1M		= NVME_UNIT_1M,
+	NVME_CMBSWTP_CMBSWTU_1G		= NVME_UNIT_1G,
+};
+
+#define NVME_CMBSWTP_CMBSWTU(cmbswtp)	NVME_GET(cmbswtp, CMBSWTP_CMBSWTU)
+#define NVME_CMBSWTP_CMBSWTV(cmbswtp)	NVME_GET(cmbswtp, CMBSWTP_CMBSWTV)
 
 enum nvme_crto {
 	NVME_CRTO_CRIMT_SHIFT	= 16,
@@ -558,10 +618,10 @@ enum nvme_pmrebs {
 	NVME_PMREBS_PMRSZU_MASK		= 0xf,
 	NVME_PMREBS_RBB_MASK		= 0x1,
 	NVME_PMREBS_PMRWBZ_MASK		= 0xffffff,
-	NVME_PMREBS_PMRSZU_B		= 0,
-	NVME_PMREBS_PMRSZU_1K		= 1,
-	NVME_PMREBS_PMRSZU_1M		= 2,
-	NVME_PMREBS_PMRSZU_1G		= 3,
+	NVME_PMREBS_PMRSZU_B		= NVME_UNIT_B,
+	NVME_PMREBS_PMRSZU_1K		= NVME_UNIT_1K,
+	NVME_PMREBS_PMRSZU_1M		= NVME_UNIT_1M,
+	NVME_PMREBS_PMRSZU_1G		= NVME_UNIT_1G,
 };
 
 #define NVME_PMREBS_PMRSZU(pmrebs)	NVME_GET(pmrebs, PMREBS_PMRSZU)
@@ -586,10 +646,10 @@ enum nvme_pmrswtp {
 	NVME_PMRSWTP_PMRSWTV_SHIFT	= 8,
 	NVME_PMRSWTP_PMRSWTU_MASK	= 0xf,
 	NVME_PMRSWTP_PMRSWTV_MASK	= 0xffffff,
-	NVME_PMRSWTP_PMRSWTU_BPS	= 0,
-	NVME_PMRSWTP_PMRSWTU_KBPS	= 1,
-	NVME_PMRSWTP_PMRSWTU_MBPS	= 2,
-	NVME_PMRSWTP_PMRSWTU_GBPS	= 3,
+	NVME_PMRSWTP_PMRSWTU_BPS	= NVME_UNIT_B,
+	NVME_PMRSWTP_PMRSWTU_KBPS	= NVME_UNIT_1K,
+	NVME_PMRSWTP_PMRSWTU_MBPS	= NVME_UNIT_1M,
+	NVME_PMRSWTP_PMRSWTU_GBPS	= NVME_UNIT_1G,
 };
 
 #define NVME_PMRSWTP_PMRSWTU(pmrswtp)	NVME_GET(pmrswtp, PMRSWTP_PMRSWTU)
@@ -1075,6 +1135,25 @@ struct nvme_id_ctrl {
 	struct nvme_id_psd	psd[32];
 	__u8			vs[1024];
 };
+
+enum nvme_cmic {
+	NVME_CMIC_MULTI_PORT_SHIFT	= 0,
+	NVME_CMIC_MULTI_CTRL_SHIFT	= 1,
+	NVME_CMIC_MULTI_SRIOV_SHIFT	= 2,
+	NVME_CMIC_MULTI_ANA_SHIFT	= 3,
+	NVME_CMIC_MULTI_RSVD_SHIFT	= 4,
+	NVME_CMIC_MULTI_PORT_MASK	= 0x1,
+	NVME_CMIC_MULTI_CTRL_MASK	= 0x1,
+	NVME_CMIC_MULTI_SRIOV_MASK	= 0x1,
+	NVME_CMIC_MULTI_ANA_MASK	= 0x1,
+	NVME_CMIC_MULTI_RSVD_MASK	= 0xf,
+};
+
+#define NVME_CMIC_MULTI_PORT(cmic)	NVME_GET(cmic, CMIC_MULTI_PORT)
+#define NVME_CMIC_MULTI_CTRL(cmic)	NVME_GET(cmic, CMIC_MULTI_CTRL)
+#define NVME_CMIC_MULTI_SRIOV(cmic)	NVME_GET(cmic, CMIC_MULTI_SRIOV)
+#define NVME_CMIC_MULTI_ANA(cmic)	NVME_GET(cmic, CMIC_MULTI_ANA)
+#define NVME_CMIC_MULTI_RSVD(cmic)	NVME_GET(cmic, CMIC_MULTI_RSVD)
 
 /**
  * enum nvme_id_ctrl_cmic - Controller Multipath IO and Namespace Sharing
