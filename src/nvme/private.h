@@ -160,15 +160,19 @@ struct nvme_fabric_options {
 	bool trsvcid;
 };
 
+struct nvme_log {
+	int fd;
+	int level;
+	bool pid;
+	bool timestamp;
+};
+
 struct nvme_root {
 	char *config_file;
 	char *application;
 	struct list_head hosts;
 	struct list_head endpoints; /* MI endpoints */
-	FILE *fp;
-	int log_level;
-	bool log_pid;
-	bool log_timestamp;
+	struct nvme_log log;
 	bool modified;
 	bool mi_probe_enabled;
 	struct nvme_fabric_options *options;
@@ -198,14 +202,10 @@ void *__nvme_realloc(void *p, size_t len);
 #endif
 
 void __attribute__((format(printf, 4, 5)))
-__nvme_msg(nvme_root_t r, int lvl, const char *func, const char *format, ...);
+__nvme_msg(nvme_root_t r, int level, const char *func, const char *format, ...);
 
-#define nvme_msg(r, lvl, format, ...)					\
-	do {								\
-		if ((lvl) <= MAX_LOGLEVEL)				\
-			__nvme_msg(r, lvl, __nvme_log_func,		\
-				   format, ##__VA_ARGS__);		\
-	} while (0)
+#define nvme_msg(r, level, format, ...)					\
+	__nvme_msg(r, level, __nvme_log_func, format, ##__VA_ARGS__)
 
 #define root_from_ctrl(c) ((c)->s && (c)->s->h ? (c)->s->h->r : NULL)
 #define root_from_ns(n) ((n)->s && (n)->s->h ? (n)->s->h->r : \

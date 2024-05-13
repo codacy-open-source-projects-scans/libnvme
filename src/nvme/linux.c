@@ -166,7 +166,7 @@ int nvme_get_telemetry_log(int fd, bool create, bool ctrl, bool rae, size_t max_
 
 	struct nvme_telemetry_log *telem;
 	enum nvme_cmd_get_log_lid lid;
-	_cleanup_free_ void *log;
+	_cleanup_free_ void *log = NULL;
 	void *tmp;
 	int err;
 	size_t dalb;
@@ -296,8 +296,8 @@ int nvme_get_new_host_telemetry(int fd, struct nvme_telemetry_log **log,
 
 int nvme_get_lba_status_log(int fd, bool rae, struct nvme_lba_status_log **log)
 {
+	_cleanup_free_ struct nvme_lba_status_log *buf = NULL;
 	__u32 size;
-	_cleanup_free_ struct nvme_lba_status_log *buf;
 	void *tmp;
 	int err;
 	struct nvme_get_log_args args = {
@@ -1513,10 +1513,10 @@ unsigned char *nvme_import_tls_key(const char *encoded_key, int *key_len,
 		return NULL;
 	}
 	crc = crc32(crc, decoded_key, decoded_len);
-	key_crc = ((u_int32_t)decoded_key[decoded_len]) |
-		((u_int32_t)decoded_key[decoded_len + 1] << 8) |
-		((u_int32_t)decoded_key[decoded_len + 2] << 16) |
-		((u_int32_t)decoded_key[decoded_len + 3] << 24);
+	key_crc = ((uint32_t)decoded_key[decoded_len]) |
+		((uint32_t)decoded_key[decoded_len + 1] << 8) |
+		((uint32_t)decoded_key[decoded_len + 2] << 16) |
+		((uint32_t)decoded_key[decoded_len + 3] << 24);
 	if (key_crc != crc) {
 		nvme_msg(NULL, LOG_ERR, "CRC mismatch (key %08x, crc %08x)",
 			 key_crc, crc);

@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <ccan/array_size/array_size.h>
 #include <ccan/endian/endian.h>
@@ -41,18 +42,32 @@ static bool nvme_mi_probe_enabled_default(void)
  */
 nvme_root_t nvme_mi_create_root(FILE *fp, int log_level)
 {
-	struct nvme_root *r = calloc(1, sizeof(*r));
+	struct nvme_root *r;
+	int fd;
 
+	r = calloc(1, sizeof(*r));
 	if (!r) {
+		errno = ENOMEM;
 		return NULL;
 	}
-	r->log_level = log_level;
-	r->fp = stderr;
+
+	if (fp) {
+		fd = fileno(fp);
+		if (fd < 0) {
+			free(r);
+			return NULL;
+		}
+	} else
+		fd = STDERR_FILENO;
+
+	r->log.fd = fd;
+	r->log.level = log_level;
+
 	r->mi_probe_enabled = nvme_mi_probe_enabled_default();
-	if (fp)
-		r->fp = fp;
+
 	list_head_init(&r->hosts);
 	list_head_init(&r->endpoints);
+
 	return r;
 }
 
@@ -327,7 +342,7 @@ int nvme_mi_scan_ep(nvme_mi_ep_t ep, bool force_rescan)
 
 	rc = nvme_mi_mi_read_mi_data_ctrl_list(ep, 0, &list);
 	if (rc)
-		return -1;
+		return rc;
 
 	n_ctrl = le16_to_cpu(list.num);
 	if (n_ctrl > NVME_ID_CTRL_LIST_MAX) {
@@ -639,6 +654,7 @@ int nvme_mi_admin_admin_passthru(nvme_mi_ctrl_t ctrl, __u8 opcode, __u8 flags,
 	struct nvme_mi_admin_req_hdr req_hdr;
 	struct nvme_mi_resp resp;
 	struct nvme_mi_req req;
+	unsigned int timeout_save;
 	int rc;
 	int direction = opcode & 0x3;
 	bool has_write_data = false;
@@ -663,11 +679,6 @@ int nvme_mi_admin_admin_passthru(nvme_mi_ctrl_t ctrl, __u8 opcode, __u8 flags,
 			has_write_data = true;
 		if (direction == NVME_DATA_TFR_CTRL_TO_HOST)
 			has_read_data = true;
-	}
-
-	if (timeout_ms > nvme_mi_ep_get_timeout(ctrl->ep)) {
-		/* Set timeout if user needs a bigger timeout */
-		nvme_mi_ep_set_timeout(ctrl->ep, timeout_ms);
 	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id, opcode);
@@ -701,7 +712,17 @@ int nvme_mi_admin_admin_passthru(nvme_mi_ctrl_t ctrl, __u8 opcode, __u8 flags,
 		resp.data_len = data_len;
 	}
 
+	/* if the user has specified a custom timeout, save the current
+	 * timeout and override
+	 */
+	if (timeout_ms != 0) {
+		timeout_save = nvme_mi_ep_get_timeout(ctrl->ep);
+		nvme_mi_ep_set_timeout(ctrl->ep, timeout_ms);
+	}
 	rc = nvme_mi_submit(ctrl->ep, &req, &resp);
+	if (timeout_ms != 0)
+		nvme_mi_ep_set_timeout(ctrl->ep, timeout_save);
+
 	if (rc)
 		return rc;
 
@@ -1003,8 +1024,10 @@ int nvme_mi_admin_get_features(nvme_mi_ctrl_t ctrl,
 	struct nvme_mi_req req;
 	int rc;
 
-	if (args->args_size < sizeof(*args))
-		return -EINVAL;
+	if (args->args_size < sizeof(*args)) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id,
 			       nvme_admin_get_features);
@@ -1042,8 +1065,10 @@ int nvme_mi_admin_set_features(nvme_mi_ctrl_t ctrl,
 	struct nvme_mi_req req;
 	int rc;
 
-	if (args->args_size < sizeof(*args))
-		return -EINVAL;
+	if (args->args_size < sizeof(*args)) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id,
 			       nvme_admin_set_features);
@@ -1140,8 +1165,10 @@ int nvme_mi_admin_ns_attach(nvme_mi_ctrl_t ctrl,
 	struct nvme_mi_req req;
 	int rc;
 
-	if (args->args_size < sizeof(*args))
-		return -EINVAL;
+	if (args->args_size < sizeof(*args)) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id,
 			       nvme_admin_ns_attach);
@@ -1173,17 +1200,20 @@ int nvme_mi_admin_fw_download(nvme_mi_ctrl_t ctrl,
 	struct nvme_mi_req req;
 	int rc;
 
-	if (args->args_size < sizeof(*args))
-		return -EINVAL;
+	if (args->args_size < sizeof(*args)) {
+		errno = EINVAL;
+		return -1;
+	}
 
-	if (args->data_len & 0x3)
-		return -EINVAL;
+	if ((args->data_len & 0x3) || (!args->data_len)) {
+		errno = EINVAL;
+		return -1;
+	}
 
-	if (args->offset & 0x3)
-		return -EINVAL;
-
-	if (!args->data_len)
-		return -EINVAL;
+	if (args->offset & 0x3) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id,
 			       nvme_admin_fw_download);
@@ -1215,8 +1245,10 @@ int nvme_mi_admin_fw_commit(nvme_mi_ctrl_t ctrl,
 	struct nvme_mi_req req;
 	int rc;
 
-	if (args->args_size < sizeof(*args))
-		return -EINVAL;
+	if (args->args_size < sizeof(*args)) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id,
 			       nvme_admin_fw_commit);
@@ -1245,8 +1277,10 @@ int nvme_mi_admin_format_nvm(nvme_mi_ctrl_t ctrl,
 	struct nvme_mi_req req;
 	int rc;
 
-	if (args->args_size < sizeof(*args))
-		return -EINVAL;
+	if (args->args_size < sizeof(*args)) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id,
 			       nvme_admin_format_nvm);
@@ -1279,8 +1313,10 @@ int nvme_mi_admin_sanitize_nvm(nvme_mi_ctrl_t ctrl,
 	struct nvme_mi_req req;
 	int rc;
 
-	if (args->args_size < sizeof(*args))
-		return -EINVAL;
+	if (args->args_size < sizeof(*args)) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	nvme_mi_admin_init_req(&req, &req_hdr, ctrl->id,
 			       nvme_admin_sanitize_nvm);
