@@ -1703,3 +1703,148 @@ int nvmf_register_ctrl(nvme_ctrl_t c, enum nvmf_dim_tas tas, __u32 *result)
 	 */
 	return nvmf_dim(c, tas, NVMF_TRTYPE_TCP, nvme_get_adrfam(c), "", NULL, result);
 }
+
+#define IS_XDIGIT(c) ((c >= '0' && c <= '9') || \
+		      (c >= 'A' && c <= 'F') || \
+		      (c >= 'a' && c <= 'f'))
+#define XDIGIT_VAL(c) ((c >= '0' && c <= '9') ? c - '0' : ( \
+		       (c >= 'A' && c <= 'F') ? c - 'A' + 10 : c - 'a' + 10))
+
+/* returns newly allocated string */
+static char *unescape_uri(const char *str, int len)
+{
+	char *dst;
+	int l;
+	int i, j;
+
+	l = len > 0 ? len : strlen(str);
+	dst = malloc(l + 1);
+	for (i = 0, j = 0; i < l; i++, j++) {
+		if (str[i] == '%' && i + 2 < l &&
+		    IS_XDIGIT(str[i + 1]) && IS_XDIGIT(str[i + 2])) {
+			dst[j] = (XDIGIT_VAL(str[i + 1]) << 4) +
+				  XDIGIT_VAL(str[i + 2]);
+			i += 2;
+		} else
+			dst[j] = str[i];
+	}
+	dst[j] = '\0';
+	return dst;
+}
+
+struct nvme_fabrics_uri *nvme_parse_uri(const char *str)
+{
+	struct nvme_fabrics_uri *uri;
+	_cleanup_free_ char *scheme = NULL;
+	_cleanup_free_ char *authority = NULL;
+	_cleanup_free_ char *path = NULL;
+	_cleanup_free_ char *h = NULL;
+	const char *host;
+	int i;
+
+	/* As defined in Boot Specification rev. 1.0:
+	 *
+	 * section 1.5.7: NVMe-oF URI Format
+	 *  nvme+tcp://192.168.1.1:4420/
+	 *  nvme+tcp://[FE80::1010]:4420/
+	 *
+	 * section 3.1.2.5.3: DHCP Root-Path - a hierarchical NVMe-oF URI Format
+	 *  NVME<+PROTOCOL>://<SERVERNAME/IP>[:TRANSPORT PORT]/<SUBSYS NQN>/<NID>
+	 * or
+	 *  NVME<+PROTOCOL>://<DISCOVERY CONTROLLER ADDRESS>[:DISCOVERY-
+	 *  -CONTROLLER PORT]/NQN.2014-08.ORG.NVMEXPRESS.DISCOVERY/<NID>
+	 */
+
+	uri = calloc(1, sizeof(struct nvme_fabrics_uri));
+	if (!uri)
+		return NULL;
+
+	if (sscanf(str, "%m[^:/]://%m[^/?#]%ms",
+		   &scheme, &authority, &path) < 2) {
+		nvme_free_uri(uri);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (sscanf(scheme, "%m[^+]+%ms",
+		   &uri->scheme, &uri->protocol) < 1) {
+		nvme_free_uri(uri);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* split userinfo */
+	host = strrchr(authority, '@');
+	if (host) {
+		host++;
+		uri->userinfo = unescape_uri(authority, host - authority);
+	} else
+		host = authority;
+
+	/* try matching IPv6 address first */
+	if (sscanf(host, "[%m[^]]]:%d",
+		   &uri->host, &uri->port) < 1) {
+		/* treat it as IPv4/hostname */
+		if (sscanf(host, "%m[^:]:%d",
+			   &h, &uri->port) < 1) {
+			nvme_free_uri(uri);
+			errno = EINVAL;
+			return NULL;
+		}
+		uri->host = unescape_uri(h, 0);
+	}
+
+	/* split path into elements */
+	if (path) {
+		char *e, *elem;
+
+		/* separate the fragment */
+		e = strrchr(path, '#');
+		if (e) {
+			uri->fragment = unescape_uri(e + 1, 0);
+			*e = '\0';
+		}
+		/* separate the query string */
+		e = strrchr(path, '?');
+		if (e) {
+			uri->query = unescape_uri(e + 1, 0);
+			*e = '\0';
+		}
+
+		/* count elements first */
+		for (i = 0, e = path; *e; e++)
+			if (*e == '/' && *(e + 1) != '/')
+				i++;
+		uri->path_segments = calloc(i + 2, sizeof(char *));
+
+		i = 0;
+		elem = strtok_r(path, "/", &e);
+		if (elem)
+			uri->path_segments[i++] = unescape_uri(elem, 0);
+		while (elem && strlen(elem)) {
+			elem = strtok_r(NULL, "/", &e);
+			if (elem)
+				uri->path_segments[i++] = unescape_uri(elem, 0);
+		}
+	}
+
+	return uri;
+}
+
+void nvme_free_uri(struct nvme_fabrics_uri *uri)
+{
+	char **s;
+
+	if (!uri)
+		return;
+	free(uri->scheme);
+	free(uri->protocol);
+	free(uri->userinfo);
+	free(uri->host);
+	for (s = uri->path_segments; s && *s; s++)
+		free(*s);
+	free(uri->path_segments);
+	free(uri->query);
+	free(uri->fragment);
+	free(uri);
+}
