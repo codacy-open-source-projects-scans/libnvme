@@ -175,6 +175,7 @@ struct nvme_root {
 	struct nvme_log log;
 	bool modified;
 	bool mi_probe_enabled;
+	bool create_only;
 	struct nvme_fabric_options *options;
 };
 
@@ -256,6 +257,7 @@ struct nvme_mi_ep {
 	void *transport_data;
 	struct list_node root_entry;
 	struct list_head controllers;
+	bool quirks_probed;
 	bool controllers_scanned;
 	unsigned int timeout;
 	unsigned int mprt_max;
