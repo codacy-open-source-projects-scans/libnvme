@@ -1865,7 +1865,7 @@ static inline int nvme_get_log_fdp_events(int fd, __u16 egid, bool host_events, 
  * the asymmetric namespace access information for ANA Groups that contain
  * namespaces that are attached to the controller processing the command.
  *
- * See &struct nvme_ana_rsp_hdr for the definition of the returned structure.
+ * See &struct nvme_ana_log for the definition of the returned structure.
  *
  * Return: The nvme command status if a response was received (see
  * &enum nvme_status_field) or -1 with errno set otherwise.
@@ -1887,7 +1887,7 @@ static inline int nvme_get_log_ana(int fd, enum nvme_log_ana_lsp lsp, bool rae,
 		.lsi = NVME_LOG_LSI_NONE,
 		.lsp = (__u8)lsp,
 		.uuidx = NVME_UUID_NONE,
-		.rae = false,
+		.rae = rae,
 		.ot = false,
 	};
 	return nvme_get_log_page(fd, NVME_LOG_PAGE_PDU_SIZE, &args);
@@ -1900,17 +1900,40 @@ static inline int nvme_get_log_ana(int fd, enum nvme_log_ana_lsp lsp, bool rae,
  * @len:	The allocated length of the log page
  * @log:	User address to store the ana group log
  *
- * See &struct nvme_ana_group_desc for the definition of the returned structure.
+ * See &struct nvme_ana_log for the definition of the returned structure.
  *
  * Return: The nvme command status if a response was received (see
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
 static inline int nvme_get_log_ana_groups(int fd, bool rae, __u32 len,
-			    struct nvme_ana_group_desc *log)
+			    struct nvme_ana_log *log)
 {
 	return nvme_get_log_ana(fd, NVME_LOG_ANA_LSP_RGO_GROUPS_ONLY, rae, 0,
 				len, log);
 }
+
+/**
+ * nvme_get_ana_log_atomic() - Retrieve Asymmetric Namespace Access log page atomically
+ * @fd:		File descriptor of nvme device
+ * @rgo:	Whether to retrieve ANA groups only (no NSIDs)
+ * @rae:	Whether to retain asynchronous events
+ * @retries:	The maximum number of times to retry on log page changes
+ * @log:	Pointer to a buffer to receive the ANA log page
+ * @len:	Input: the length of the log page buffer.
+ * 		Output: the actual length of the ANA log page.
+ *
+ * See &struct nvme_ana_log for the definition of the returned structure.
+ *
+ * Return: If successful, returns 0 and sets *len to the actual log page length.
+ * If unsuccessful, returns the nvme command status if a response was received
+ * (see &enum nvme_status_field) or -1 with errno set otherwise.
+ * Sets errno = EINVAL if retries == 0.
+ * Sets errno = EAGAIN if unable to read the log page atomically
+ * because chgcnt changed during each of the retries attempts.
+ * Sets errno = ENOSPC if the full log page does not fit in the provided buffer.
+ */
+int nvme_get_ana_log_atomic(int fd, bool rgo, bool rae, unsigned int retries,
+			    struct nvme_ana_log *log, __u32 *len);
 
 /**
  * nvme_get_log_lba_status() - Retrieve LBA Status
