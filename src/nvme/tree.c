@@ -117,16 +117,99 @@ static void cleanup_dirents(struct dirents *ents)
 
 #define _cleanup_dirents_ __cleanup__(cleanup_dirents)
 
+static char *nvme_hostid_from_hostnqn(const char *hostnqn)
+{
+	const char *uuid;
+
+	uuid = strstr(hostnqn, "uuid:");
+	if (!uuid)
+		return NULL;
+
+	return strdup(uuid + strlen("uuid:"));
+}
+
+int nvme_host_get_ids(nvme_root_t r,
+		      char *hostnqn_arg, char *hostid_arg,
+		      char **hostnqn, char **hostid)
+{
+	_cleanup_free_ char *nqn = NULL;
+	_cleanup_free_ char *hid = NULL;
+	_cleanup_free_ char *hnqn = NULL;
+	nvme_host_t h;
+
+	/* command line argumments */
+	if (hostid_arg)
+		hid = strdup(hostid_arg);
+	if (hostnqn_arg)
+		hnqn = strdup(hostnqn_arg);
+
+	/* JSON config: assume the first entry is the default host */
+	h = nvme_first_host(r);
+	if (h) {
+		if (!hid)
+			hid = strdup(nvme_host_get_hostid(h));
+		if (!hnqn)
+			hnqn = strdup(nvme_host_get_hostnqn(h));
+	}
+
+	/* /etc/nvme/hostid and/or /etc/nvme/hostnqn */
+	if (!hid)
+		hid = nvmf_hostid_from_file();
+	if (!hnqn)
+		hnqn = nvmf_hostnqn_from_file();
+
+	/* incomplete configuration, thus derive hostid from hostnqn */
+	if (!hid && hnqn)
+		hid = nvme_hostid_from_hostnqn(hnqn);
+
+	/*
+	 * fallback to use either DMI information or device-tree. If all
+	 * fails generate one
+	 */
+	if (!hid) {
+		hid = nvmf_hostid_generate();
+		if (!hid) {
+			errno = -ENOMEM;
+			return -1;
+		}
+
+		nvme_msg(r, LOG_DEBUG,
+			 "warning: using auto generated hostid and hostnqn\n");
+	}
+
+	/* incomplete configuration, thus derive hostnqn from hostid */
+	if (!hnqn) {
+		hnqn = nvmf_hostnqn_generate_from_hostid(hid);
+		if (!hnqn) {
+			errno = -ENOMEM;
+			return -1;
+		}
+	}
+
+	/* sanity checks */
+	nqn = nvme_hostid_from_hostnqn(hnqn);
+	if (nqn && strcmp(nqn, hid)) {
+		nvme_msg(r, LOG_DEBUG,
+			 "warning: use hostid '%s' which does not match uuid in hostnqn '%s'\n",
+			 hid, hnqn);
+	}
+
+	*hostid = hid;
+	*hostnqn = hnqn;
+	hid = NULL;
+	hnqn = NULL;
+
+	return 0;
+}
+
 nvme_host_t nvme_default_host(nvme_root_t r)
 {
-	struct nvme_host *h;
 	_cleanup_free_ char *hostnqn = NULL;
 	_cleanup_free_ char *hostid = NULL;
+	struct nvme_host *h;
 
-	hostnqn = nvmf_hostnqn_from_file();
-	if (!hostnqn)
-		hostnqn = nvmf_hostnqn_generate();
-	hostid = nvmf_hostid_from_file();
+	if (nvme_host_get_ids(r, NULL, NULL, &hostnqn, &hostid))
+		return NULL;
 
 	h = nvme_lookup_host(r, hostnqn, hostid);
 
@@ -557,7 +640,7 @@ struct nvme_subsystem *nvme_alloc_subsystem(struct nvme_host *h,
 	list_head_init(&s->ctrls);
 	list_head_init(&s->namespaces);
 	list_node_init(&s->entry);
-	list_add(&h->subsystems, &s->entry);
+	list_add_tail(&h->subsystems, &s->entry);
 	h->r->modified = true;
 	return s;
 }
@@ -641,7 +724,7 @@ struct nvme_host *nvme_lookup_host(nvme_root_t r, const char *hostnqn,
 	list_head_init(&h->subsystems);
 	list_node_init(&h->entry);
 	h->r = r;
-	list_add(&r->hosts, &h->entry);
+	list_add_tail(&r->hosts, &h->entry);
 	r->modified = true;
 
 	return h;
@@ -831,7 +914,7 @@ static void nvme_subsystem_set_path_ns(nvme_subsystem_t s, nvme_path_t p)
 	sprintf(n_name, "nvme%dn%d", i, nsid);
 	nvme_subsystem_for_each_ns(s, n) {
 		if (!strcmp(n_name, nvme_ns_get_name(n))) {
-			list_add(&n->paths, &p->nentry);
+			list_add_tail(&n->paths, &p->nentry);
 			p->n = n;
 		}
 	}
@@ -877,7 +960,7 @@ static int nvme_ctrl_scan_path(nvme_root_t r, struct nvme_ctrl *c, char *name)
 	list_node_init(&p->nentry);
 	nvme_subsystem_set_path_ns(c->s, p);
 	list_node_init(&p->entry);
-	list_add(&c->paths, &p->entry);
+	list_add_tail(&c->paths, &p->entry);
 	return 0;
 }
 
@@ -1680,7 +1763,7 @@ nvme_ctrl_t nvme_lookup_ctrl(nvme_subsystem_t s, const char *transport,
 			     host_traddr, host_iface, trsvcid);
 	if (c) {
 		c->s = s;
-		list_add(&s->ctrls, &c->entry);
+		list_add_tail(&s->ctrls, &c->entry);
 		s->h->r->modified = true;
 	}
 	return c;
@@ -1896,7 +1979,7 @@ int nvme_init_ctrl(nvme_host_t h, nvme_ctrl_t c, int instance)
 	if (s->subsystype && !strcmp(s->subsystype, "discovery"))
 		c->discovery_ctrl = true;
 	c->s = s;
-	list_add(&s->ctrls, &c->entry);
+	list_add_tail(&s->ctrls, &c->entry);
 	return ret;
 }
 
@@ -2670,7 +2753,7 @@ static int nvme_ctrl_scan_namespace(nvme_root_t r, struct nvme_ctrl *c,
 	}
 	n->s = c->s;
 	n->c = c;
-	list_add(&c->namespaces, &n->entry);
+	list_add_tail(&c->namespaces, &n->entry);
 	return 0;
 }
 
@@ -2693,7 +2776,7 @@ static void nvme_subsystem_set_ns_path(nvme_subsystem_t s, nvme_ns_t n)
 			if (ret != 3)
 				continue;
 			if (ns_ctrl == p_subsys && ns_nsid == p_nsid) {
-				list_add(&n->paths, &p->nentry);
+				list_add_tail(&n->paths, &p->nentry);
 				p->n = n;
 			}
 		}
@@ -2731,7 +2814,7 @@ static int nvme_subsystem_scan_namespace(nvme_root_t r, nvme_subsystem_t s,
 		__nvme_free_ns(_n);
 	}
 	n->s = s;
-	list_add(&s->namespaces, &n->entry);
+	list_add_tail(&s->namespaces, &n->entry);
 	nvme_subsystem_set_ns_path(s, n);
 	return 0;
 }
