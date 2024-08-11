@@ -1293,7 +1293,8 @@ struct nvme_id_psd {
  * @rsvd358:   Reserved
  * @megcap:    Max Endurance Group Capacity indicates the maximum capacity
  *	       of a single Endurance Group.
- * @rsvd384:   Reserved
+ * @tmpthha:   Temperature Threshold Hysteresis Attributes
+ * @rsvd385:   Reserved
  * @sqes:      Submission Queue Entry Size, see &enum nvme_id_ctrl_sqes.
  * @cqes:      Completion Queue Entry Size, see &enum nvme_id_ctrl_cqes.
  * @maxcmd:    Maximum Outstanding Commands indicates the maximum number of
@@ -1426,7 +1427,8 @@ struct nvme_id_ctrl {
 	__le16			domainid;
 	__u8			rsvd358[10];
 	__u8			megcap[16];
-	__u8			rsvd384[128];
+	__u8			tmpthha;
+	__u8			rsvd385[127];
 	__u8			sqes;
 	__u8			cqes;
 	__le16			maxcmd;
@@ -3301,6 +3303,7 @@ struct nvme_cmd_effects_log {
  * @NVME_CMD_EFFECTS_NCC:	Namespace Capability Change
  * @NVME_CMD_EFFECTS_NIC:	Namespace Inventory Change
  * @NVME_CMD_EFFECTS_CCC:	Controller Capability Change
+ * @NVME_CMD_EFFECTS_CSER_MASK:	Command Submission and Execution Relaxations
  * @NVME_CMD_EFFECTS_CSE_MASK:	Command Submission and Execution
  * @NVME_CMD_EFFECTS_UUID_SEL:	UUID Selection Supported
  */
@@ -3310,7 +3313,8 @@ enum nvme_cmd_effects {
 	NVME_CMD_EFFECTS_NCC		= 1 << 2,
 	NVME_CMD_EFFECTS_NIC		= 1 << 3,
 	NVME_CMD_EFFECTS_CCC		= 1 << 4,
-	NVME_CMD_EFFECTS_CSE_MASK	= 3 << 16,
+	NVME_CMD_EFFECTS_CSER_MASK	= 3 << 14,
+	NVME_CMD_EFFECTS_CSE_MASK	= 7 << 16,
 	NVME_CMD_EFFECTS_UUID_SEL	= 1 << 19,
 };
 
@@ -5186,6 +5190,22 @@ struct nvme_lba_status {
 	__u8	cmpc;
 	__u8	rsvd5[3];
 	struct nvme_lba_status_desc descs[];
+};
+
+/**
+ * enum nvme_lba_status_cmpc - Get LBA Status Command Completion Condition
+ * @NVME_LBA_STATUS_CMPC_NO_CMPC:	No indication of the completion condition
+ * @NVME_LBA_STATUS_CMPC_INCOMPLETE:	Command completed, but additional LBA Status
+ *					Descriptor Entries are available to transfer
+ *					or scan did not complete (if ATYPE = 10h)
+ * @NVME_LBA_STATUS_CMPC_COMPLETE:	Completed the specified action over the number
+ *					of LBAs specified in the Range Length field and
+ *					transferred all available LBA Status Descriptors
+ */
+enum nvme_lba_status_cmpc {
+	NVME_LBA_STATUS_CMPC_NO_CMPC	= 0x0,
+	NVME_LBA_STATUS_CMPC_INCOMPLETE	= 0x1,
+	NVME_LBA_STATUS_CMPC_COMPLETE	= 0x2,
 };
 
 /**
