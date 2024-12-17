@@ -85,6 +85,9 @@ struct nvme_ctrl {
 	char *trsvcid;
 	char *dhchap_key;
 	char *dhchap_ctrl_key;
+	char *keyring;
+	char *tls_key_identity;
+	char *tls_key;
 	char *cntrltype;
 	char *cntlid;
 	char *dctype;
@@ -296,5 +299,8 @@ void __nvme_mi_mctp_set_ops(const struct __mi_mctp_socket_ops *newops);
 
 #define SECTOR_SIZE	512
 #define SECTOR_SHIFT	9
+
+int __nvme_import_keys_from_config(nvme_host_t h, nvme_ctrl_t c,
+				   long *keyring_id, long *key_id);
 
 #endif /* _LIBNVME_PRIVATE_H */

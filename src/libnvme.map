@@ -1,4 +1,28 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+LIBNVME_1.12 {
+	global:
+		nvme_lm_cdq;
+		nvme_lm_track_send;
+		nvme_lm_migration_send;
+		nvme_lm_migration_recv;
+		nvme_lm_set_features_ctrl_data_queue;
+		nvme_lm_get_features_ctrl_data_queue;
+};
+
+LIBNVME_1.11 {
+	global:
+		nvme_ctrl_get_keyring;
+		nvme_ctrl_get_tls_key;
+		nvme_ctrl_get_tls_key_identity;
+		nvme_ctrl_set_keyring;
+		nvme_ctrl_set_tls_key;
+		nvme_ctrl_set_tls_key_identity;
+		nvme_export_tls_key_versioned;
+		nvme_import_tls_key_versioned;
+		nvmf_connect_ctrl;
+};
+
+
 LIBNVME_1.10 {
 	global:
 		nvme_free_uri;

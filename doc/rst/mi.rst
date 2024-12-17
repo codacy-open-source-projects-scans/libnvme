@@ -73,9 +73,7 @@ are:
 with a couple of accommodations for older spec types, particularly NVMe-MI
 1.1, where possible.
 
-.. c:macro:: NVME_MI_MSGTYPE_NVME
-
-``NVME_MI_MSGTYPE_NVME ()``
+.. c:function:: NVME_MI_MSGTYPE_NVME ()
 
    MCTP message type for NVMe-MI messages.
 
@@ -91,7 +89,7 @@ bit (0x80) set.
 
 
 
-.. c:enum:: nvme_mi_message_type
+.. c:type:: enum nvme_mi_message_type
 
    NVMe-MI message type field.
 
@@ -117,7 +115,7 @@ byte). Not to be confused with the MCTP message type in byte 0.
 
 
 
-.. c:enum:: nvme_mi_ror
+.. c:type:: enum nvme_mi_ror
 
    Request or response field.
 
@@ -132,7 +130,7 @@ byte). Not to be confused with the MCTP message type in byte 0.
 
 
 
-.. c:enum:: nvme_mi_resp_status
+.. c:type:: enum nvme_mi_resp_status
 
    values for the response status field
 
@@ -198,7 +196,7 @@ byte). Not to be confused with the MCTP message type in byte 0.
 
 
 
-.. c:struct:: nvme_mi_msg_hdr
+.. c:type:: struct nvme_mi_msg_hdr
 
    General MI message header.
 
@@ -236,7 +234,7 @@ section 3.1. This is used for all message types, MI and Admin.
 
 
 
-.. c:struct:: nvme_mi_msg_resp
+.. c:type:: struct nvme_mi_msg_resp
 
    Generic response type.
 
@@ -270,7 +268,7 @@ will define parts of the reserved data, and may add further fields.
 
 
 
-.. c:enum:: nvme_mi_mi_opcode
+.. c:type:: enum nvme_mi_mi_opcode
 
    Operation code for supported NVMe-MI commands.
 
@@ -291,7 +289,7 @@ will define parts of the reserved data, and may add further fields.
 
 
 
-.. c:struct:: nvme_mi_mi_req_hdr
+.. c:type:: struct nvme_mi_mi_req_hdr
 
    MI request message header.
 
@@ -331,7 +329,7 @@ Wire format for MI request message headers, defined in section 5 of NVMe-MI.
 
 
 
-.. c:struct:: nvme_mi_mi_resp_hdr
+.. c:type:: struct nvme_mi_mi_resp_hdr
 
    MI response message header.
 
@@ -364,7 +362,7 @@ Wire format for MI response message header, defined in section 5 of NVMe-MI.
 
 
 
-.. c:enum:: nvme_mi_dtyp
+.. c:type:: enum nvme_mi_dtyp
 
    Data Structure Type field.
 
@@ -396,7 +394,7 @@ indicate the particular structure to query from the endpoint.
 
 
 
-.. c:enum:: nvme_mi_config_id
+.. c:type:: enum nvme_mi_config_id
 
    NVMe-MI Configuration identifier.
 
@@ -423,7 +421,7 @@ See :c:type:`nvme_mi_mi_config_get`() and :c:type:`nvme_mi_config_set`().
 
 
 
-.. c:enum:: nvme_mi_config_smbus_freq
+.. c:type:: enum nvme_mi_config_smbus_freq
 
    SMBus/I2C frequency values
 
@@ -446,7 +444,7 @@ Values used in the SMBus Frequency device configuration. See
 
 
 
-.. c:struct:: nvme_mi_admin_req_hdr
+.. c:type:: struct nvme_mi_admin_req_hdr
 
    Admin command request header.
 
@@ -536,7 +534,7 @@ NVMe-MI.
 
 
 
-.. c:struct:: nvme_mi_admin_resp_hdr
+.. c:type:: struct nvme_mi_admin_resp_hdr
 
    Admin command response header.
 
@@ -576,6 +574,63 @@ NVMe-MI.
 
 This is the generic response format with the three doublewords of completion
 queue data, plus optional response data.
+
+
+
+
+.. c:type:: enum nvme_mi_control_opcode
+
+   Operation code for Control Primitives.
+
+**Constants**
+
+``nvme_mi_control_opcode_pause``
+  Suspend response transmission/timeout
+
+``nvme_mi_control_opcode_resume``
+  Resume from a paused condition
+
+``nvme_mi_control_opcode_abort``
+  Re-initialize a Command Slot to the Idle state
+
+``nvme_mi_control_opcode_get_state``
+  Get the state of a Command Slot
+
+``nvme_mi_control_opcode_replay``
+  Retransmit the Response Message
+
+
+
+
+.. c:type:: struct nvme_mi_control_req
+
+   The Control Primitive request.
+
+**Definition**
+
+::
+
+  struct nvme_mi_control_req {
+    struct nvme_mi_msg_hdr hdr;
+    __u8 opcode;
+    __u8 tag;
+    __le16 cpsp;
+  };
+
+**Members**
+
+``hdr``
+  Generic MI message header
+
+``opcode``
+  Control Primitive Opcodes (using :c:type:`enum nvme_mi_control_opcode <nvme_mi_control_opcode>`)
+
+``tag``
+  flag - Opaque value passed from request to response
+
+``cpsp``
+  Control Primitive Specific Parameter
+
 
 
 .. c:function:: const char * nvme_mi_status_to_string (int status)
@@ -656,7 +711,7 @@ endpoint to determine model-specific details.
 
 
 
-.. c:type:: nvme_mi_ep_t
+.. c:type:: typedef nvme_mi_ep_t
 
    MI Endpoint object.
 
@@ -715,9 +770,7 @@ next endpoint MI endpoint object after **e** under this root, or NULL
 See: :c:type:`nvme_mi_first_endpoint`, :c:type:`nvme_mi_for_each_endpoint`
 
 
-.. c:macro:: nvme_mi_for_each_endpoint
-
-``nvme_mi_for_each_endpoint (m, e)``
+.. c:function:: nvme_mi_for_each_endpoint (m, e)
 
    Iterator for NVMe-MI endpoints.
 
@@ -730,9 +783,7 @@ See: :c:type:`nvme_mi_first_endpoint`, :c:type:`nvme_mi_for_each_endpoint`
   :c:type:`nvme_mi_ep_t` object, set on each iteration
 
 
-.. c:macro:: nvme_mi_for_each_endpoint_safe
-
-``nvme_mi_for_each_endpoint_safe (m, e, _e)``
+.. c:function:: nvme_mi_for_each_endpoint_safe (m, e, _e)
 
    Iterator for NVMe-MI endpoints, allowing deletion during traversal
 
@@ -802,7 +853,7 @@ Returns the current timeout value, in milliseconds, for this endpoint.
 
 
 
-.. c:type:: nvme_mi_ctrl_t
+.. c:type:: typedef nvme_mi_ctrl_t
 
    NVMe-MI Controller object.
 
@@ -853,9 +904,7 @@ next MI controller object after **c** under this endpoint, or NULL
 See: :c:type:`nvme_mi_first_ctrl`, :c:type:`nvme_mi_for_each_ctrl`
 
 
-.. c:macro:: nvme_mi_for_each_ctrl
-
-``nvme_mi_for_each_ctrl (ep, c)``
+.. c:function:: nvme_mi_for_each_ctrl (ep, c)
 
    Iterator for NVMe-MI controllers.
 
@@ -876,9 +925,7 @@ call :c:type:`nvme_mi_scan_ep`() to scan for the controllers first.
 See: :c:type:`nvme_mi_scan_ep`()
 
 
-.. c:macro:: nvme_mi_for_each_ctrl_safe
-
-``nvme_mi_for_each_ctrl_safe (ep, c, _c)``
+.. c:function:: nvme_mi_for_each_ctrl_safe (ep, c, _c)
 
    Iterator for NVMe-MI controllers, allowing deletion during traversal
 
@@ -1615,6 +1662,36 @@ See: :c:type:`struct nvme_identify_args <nvme_identify_args>`
 
 The nvme command status if a response was received (see
 :c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+.. c:function:: int nvme_mi_control (nvme_mi_ep_t ep, __u8 opcode, __u16 cpsp, __u16 *result_cpsr)
+
+   Perform a Control Primitive command
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  endpoint for MI communication
+
+``__u8 opcode``
+  Control Primitive opcode (using :c:type:`enum nvme_mi_control_opcode <nvme_mi_control_opcode>`)
+
+``__u16 cpsp``
+  Control Primitive Specific Parameter
+
+``__u16 *result_cpsr``
+  Optional field to return the result from the CPSR field
+
+**Description**
+
+Perform a Control Primitive command, using the opcode specified in **opcode**
+Stores the result from the CPSR field in **result_cpsr** if set.
+
+See: :c:type:`enum nvme_mi_control_opcode <nvme_mi_control_opcode>`
+
+**Return**
+
+0 on success, non-zero on failure
 
 
 .. c:function:: int nvme_mi_admin_identify_cns_nsid (nvme_mi_ctrl_t ctrl, enum nvme_identify_cns cns, __u32 nsid, void *data)
@@ -2853,6 +2930,27 @@ The nvme command status if a response was received (see
 
 ``void *pevent_log``
   User address to store the persistent event log
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+.. c:function:: int nvme_mi_admin_get_log_lockdown (nvme_mi_ctrl_t ctrl, __u8 cnscp, struct nvme_lockdown_log *lockdown_log)
+
+   Retrieve lockdown Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``__u8 cnscp``
+  Contents and Scope of Command and Feature Identifier Lists
+
+``struct nvme_lockdown_log *lockdown_log``
+  Buffer to store the lockdown log
 
 **Return**
 

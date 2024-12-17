@@ -7,7 +7,7 @@ Fabrics-specific definitions.
 
 
 
-.. c:struct:: nvme_fabrics_config
+.. c:type:: struct nvme_fabrics_config
 
    Defines all linux nvme fabrics initiator options
 
@@ -29,6 +29,7 @@ Fabrics-specific definitions.
     int tos;
     long keyring;
     long tls_key;
+    long tls_configured_key;
     bool duplicate_connect;
     bool disable_sqflow;
     bool hdr_digest;
@@ -78,6 +79,9 @@ Fabrics-specific definitions.
 ``tls_key``
   TLS PSK for the connection
 
+``tls_configured_key``
+  TLS PSK for connect command for the connection
+
 ``duplicate_connect``
   Allow multiple connections to the same target
 
@@ -100,7 +104,7 @@ Fabrics-specific definitions.
 
 
 
-.. c:struct:: nvme_fabrics_uri
+.. c:type:: struct nvme_fabrics_uri
 
    Parsed URI structure
 
@@ -376,6 +380,25 @@ into the topology using **h** as parent.
 0 on success; on failure errno is set and -1 is returned.
 
 
+.. c:function:: int nvmf_connect_ctrl (nvme_ctrl_t c)
+
+   Connect a controller
+
+**Parameters**
+
+``nvme_ctrl_t c``
+  Controller to be connected
+
+**Description**
+
+Issues a 'connect' command to the NVMe-oF controller.
+**c** must be initialized and not connected to the topology.
+
+**Return**
+
+0 on success; on failure errno is set and -1 is returned.
+
+
 .. c:function:: int nvmf_get_discovery_log (nvme_ctrl_t c, struct nvmf_discovery_log **logp, int max_retries)
 
    Return the discovery log page
@@ -407,7 +430,7 @@ Consider using nvmf_get_discovery_wargs() instead.
 
 
 
-.. c:struct:: nvme_get_discovery_args
+.. c:type:: struct nvme_get_discovery_args
 
    Arguments for nvmf_get_discovery_wargs()
 

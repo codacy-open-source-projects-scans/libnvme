@@ -8,7 +8,7 @@
 project(
     'libnvme', ['c'],
     meson_version: '>= 0.50.0',
-    version: '1.10',
+    version: '1.11.1',
     license: 'LGPL-2.1-or-later',
     default_options: [
         'c_std=gnu99',
@@ -246,6 +246,12 @@ conf.set(
     ),
     description: 'Is ioctl the glibc interface (rather than POSIX)'
 )
+dl_dep = dependency('dl', required: false)
+conf.set(
+    'HAVE_LIBC_DLSYM',
+    cc.has_function('dlsym', dependencies: dl_dep),
+    description: 'Is dlsym function present',
+)
 
 if cc.has_function_attribute('fallthrough')
   conf.set('fallthrough', '__attribute__((__fallthrough__))')
@@ -258,6 +264,7 @@ substs = configuration_data()
 substs.set('NAME',    meson.project_name())
 substs.set('VERSION', meson.project_version())
 substs.set('LICENSE', meson.project_license()[0])
+substs.set('PREFIX', prefixdir)
 configure_file(
     input:         'libnvme.spec.in',
     output:        'libnvme.spec',

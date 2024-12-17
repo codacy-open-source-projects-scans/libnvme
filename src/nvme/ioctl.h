@@ -1526,14 +1526,16 @@ static inline int nvme_get_log_device_self_test(int fd,
 }
 
 /**
- * nvme_get_log_create_telemetry_host() - Create host telemetry log
+ * nvme_get_log_create_telemetry_host_mcda() - Create host telemetry log
  * @fd:		File descriptor of nvme device
+ * @mcda:	Maximum Created Data Area
  * @log:	Userspace address of the log payload
  *
  * Return: The nvme command status if a response was received (see
  * &enum nvme_status_field) or -1 with errno set otherwise.
  */
-static inline int nvme_get_log_create_telemetry_host(int fd,
+static inline int nvme_get_log_create_telemetry_host_mcda(int fd,
+			enum nvme_telemetry_da mcda,
 			struct nvme_telemetry_log *log)
 {
 	struct nvme_get_log_args args = {
@@ -1548,12 +1550,26 @@ static inline int nvme_get_log_create_telemetry_host(int fd,
 		.nsid = NVME_NSID_NONE,
 		.csi = NVME_CSI_NVM,
 		.lsi = NVME_LOG_LSI_NONE,
-		.lsp = NVME_LOG_TELEM_HOST_LSP_CREATE,
+		.lsp = (__u8)((mcda << 1) | NVME_LOG_TELEM_HOST_LSP_CREATE),
 		.uuidx = NVME_UUID_NONE,
 		.rae = false,
 		.ot = false,
 	};
 	return nvme_get_log_page(fd, NVME_LOG_PAGE_PDU_SIZE, &args);
+}
+
+/**
+ * nvme_get_log_create_telemetry_host() - Create host telemetry log
+ * @fd:		File descriptor of nvme device
+ * @log:	Userspace address of the log payload
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+static inline int nvme_get_log_create_telemetry_host(int fd,
+			struct nvme_telemetry_log *log)
+{
+	return nvme_get_log_create_telemetry_host_mcda(fd, NVME_TELEMETRY_DA_CTRL_DETERMINE, log);
 }
 
 /**
@@ -2305,6 +2321,38 @@ static inline int nvme_get_log_persistent_event(int fd,
 		.csi = NVME_CSI_NVM,
 		.lsi = NVME_LOG_LSI_NONE,
 		.lsp = (__u8)action,
+		.uuidx = NVME_UUID_NONE,
+		.rae = false,
+		.ot = false,
+	};
+	return nvme_get_log_page(fd, NVME_LOG_PAGE_PDU_SIZE, &args);
+}
+
+/**
+ * nvme_get_log_lockdown() - Retrieve lockdown Log
+ * @fd:			File descriptor of nvme device
+ * @cnscp:		Contents and Scope of Command and Feature Identifier Lists
+ * @lockdown_log:	Buffer to store the lockdown log
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+static inline int nvme_get_log_lockdown(int fd,
+			__u8 cnscp, struct nvme_lockdown_log *lockdown_log)
+{
+	struct nvme_get_log_args args = {
+		.lpo = 0,
+		.result = NULL,
+		.log = lockdown_log,
+		.args_size = sizeof(args),
+		.fd = fd,
+		.timeout = NVME_DEFAULT_IOCTL_TIMEOUT,
+		.lid = NVME_LOG_LID_CMD_AND_FEAT_LOCKDOWN,
+		.len = sizeof(*lockdown_log),
+		.nsid = NVME_NSID_ALL,
+		.csi = NVME_CSI_NVM,
+		.lsi = NVME_LOG_LSI_NONE,
+		.lsp = cnscp,
 		.uuidx = NVME_UUID_NONE,
 		.rae = false,
 		.ot = false,
@@ -4210,4 +4258,68 @@ int nvme_zns_append(struct nvme_zns_append_args *args);
  */
 int nvme_dim_send(struct nvme_dim_args *args);
 
+/**
+ * nvme_lm_cdq() - Controller Data Queue - Controller Data Queue command
+ * @args:	&struct nvme_lm_cdq_args argument structure
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.)
+ */
+int nvme_lm_cdq(struct nvme_lm_cdq_args *args);
+
+/**
+ * nvme_lm_track_send() - Track Send command
+ * @args:	&struct nvme_lm_track_send_args argument structure
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_lm_track_send(struct nvme_lm_track_send_args *args);
+
+/**
+ * nvme_lm_migration_send() - Migration Send command
+ * @args:	&struct nvme_lm_migration_send_args argument structure
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_lm_migration_send(struct nvme_lm_migration_send_args *args);
+
+/**
+ * nvme_lm_migration_recv - Migration Receive command
+ * @args:	&struct nvme_lm_migration_rev_args argument structure
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_lm_migration_recv(struct nvme_lm_migration_recv_args *args);
+
+/**
+ * nvme_lm_set_features_ctrl_data_queue - Set Controller Datea Queue feature
+ * @fd:		File descriptor of nvme device
+ * @cdqid:	Controller Data Queue ID (CDQID)
+ * @hp:		Head Pointer
+ * @tpt:	Tail Pointer Trigger
+ * @etpt:	Enable Tail Pointer Trigger
+ * @result:	The command completions result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_lm_set_features_ctrl_data_queue(int fd, __u16 cdqid, __u32 hp, __u32 tpt, bool etpt,
+					 __u32 *result);
+
+/**
+ * nvme_lm_get_features_ctrl_data_queue - Get Controller Data Queue feature
+ * @fd:		File descriptor of nvme device
+ * @cdqid:	Controller Data Queue ID (CDQID)
+ * @data:	Get Controller Data Queue feature data
+ * @result:	The command completions result from CQE dword0
+ *
+ * Return: The nvme command status if a response was received (see
+ * &enum nvme_status_field) or -1 with errno set otherwise.
+ */
+int nvme_lm_get_features_ctrl_data_queue(int fd, __u16 cdqid,
+					 struct nvme_lm_ctrl_data_queue_fid_data *data,
+					 __u32 *result);
 #endif /* _LIBNVME_IOCTL_H */

@@ -35,20 +35,6 @@ int nvme_fw_download_seq(int fd, __u32 size, __u32 xfer, __u32 offset,
 			 void *buf);
 
 /**
- * enum nvme_telemetry_da - Telemetry Log Data Area
- * @NVME_TELEMETRY_DA_1:	Data Area 1
- * @NVME_TELEMETRY_DA_2:	Data Area 2
- * @NVME_TELEMETRY_DA_3:	Data Area 3
- * @NVME_TELEMETRY_DA_4:	Data Area 4
- */
-enum nvme_telemetry_da {
-	NVME_TELEMETRY_DA_1	= 1,
-	NVME_TELEMETRY_DA_2	= 2,
-	NVME_TELEMETRY_DA_3	= 3,
-	NVME_TELEMETRY_DA_4	= 4,
-};
-
-/**
  * nvme_get_telemetry_max() - Get telemetry limits
  * @fd:		File descriptor of nvme device
  * @da:		On success return max supported data area
@@ -437,6 +423,25 @@ long nvme_revoke_tls_key(const char *keyring, const char *key_type,
 char *nvme_export_tls_key(const unsigned char *key_data, int key_len);
 
 /**
+ * nvme_export_tls_key_versioned() - Export a TLS pre-shared key
+ * @version:	Indicated the representation of the TLS PSK
+ * @hmac:	HMAC algorithm used to transfor the configured PSK
+ *		in a retained PSK
+ * @key_data:	Raw data of the key
+ * @key_len:	Length of @key_data
+ *
+ * Returns @key_data in the PSK Interchange format as defined in section
+ * 3.6.1.5 of the NVMe TCP Transport specification.
+ *
+ * Return: The string containing the TLS identity or NULL with errno set
+ * on error. It is the responsibility of the caller to free the returned
+ * string.
+ */
+char *nvme_export_tls_key_versioned(unsigned char version, unsigned char hmac,
+				    const unsigned char *key_data,
+				    size_t key_len);
+
+/**
  * nvme_import_tls_key() - Import a TLS key
  * @encoded_key:	TLS key in PSK interchange format
  * @key_len:		Length of the resulting key data
@@ -451,6 +456,24 @@ char *nvme_export_tls_key(const unsigned char *key_data, int key_len);
 unsigned char *nvme_import_tls_key(const char *encoded_key, int *key_len,
 				   unsigned int *hmac);
 
+/**
+ * nvme_import_tls_key_versioned() - Import a TLS key
+ * @encoded_key:	TLS key in PSK interchange format
+ * @version:		Indicated the representation of the TLS PSK
+ * @hmac:		HMAC algorithm used to transfor the configured
+ *			PSK in a retained PSK
+ * @key_len:		Length of the resulting key data
+ *
+ * Imports @key_data in the PSK Interchange format as defined in section
+ * 3.6.1.5 of the NVMe TCP Transport specification.
+ *
+ * Return: The raw data of the PSK or NULL with errno set on error. It is
+ * the responsibility of the caller to free the returned string.
+ */
+unsigned char *nvme_import_tls_key_versioned(const char *encoded_key,
+					     unsigned char *version,
+					     unsigned char *hmac,
+					     size_t *key_len);
 /**
  * nvme_submit_passthru - Low level ioctl wrapper for passthru commands
  * @fd:		File descriptor of the nvme device

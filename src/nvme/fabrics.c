@@ -309,6 +309,22 @@ static int __add_bool_argument(char **argstr, char *tok, bool arg)
 	return 0;
 }
 
+static int __add_hex_argument(char **argstr, char *tok, int arg, bool allow_zero)
+{
+	char *nstr;
+
+	if (arg < 0 || (!arg && !allow_zero))
+		return 0;
+	if (asprintf(&nstr, "%s,%s=0x%08x", *argstr, tok, arg) < 0) {
+		errno = ENOMEM;
+		return -1;
+	}
+	free(*argstr);
+	*argstr = nstr;
+
+	return 0;
+}
+
 static int __add_int_argument(char **argstr, char *tok, int arg, bool allow_zero)
 {
 	char *nstr;
@@ -363,7 +379,7 @@ static int __nvmf_supported_options(nvme_root_t r);
 	!__nvmf_supported_options(r) && (r)->options->tok;		\
 })
 
-#define add_bool_argument(o, argstr, tok, arg)				\
+#define add_bool_argument(r, argstr, tok, arg)				\
 ({									\
 	int ret;							\
 	if (nvmf_check_option(r, tok)) {				\
@@ -379,7 +395,24 @@ static int __nvmf_supported_options(nvme_root_t r);
 	ret;								\
 })
 
-#define add_int_argument(o, argstr, tok, arg, allow_zero) \
+#define add_hex_argument(r, argstr, tok, arg, allow_zero)		\
+({									\
+	int ret;							\
+	if (nvmf_check_option(r, tok)) {				\
+		ret = __add_hex_argument(argstr,			\
+					stringify(tok),			\
+					arg,				\
+					allow_zero);			\
+	} else {							\
+		nvme_msg(r, LOG_DEBUG,					\
+			 "option \"%s\" ignored\n",			\
+			 stringify(tok));				\
+		ret = 0;						\
+	}								\
+	ret;								\
+})
+
+#define add_int_argument(r, argstr, tok, arg, allow_zero)		\
 ({									\
 	int ret;							\
 	if (nvmf_check_option(r, tok)) {				\
@@ -396,7 +429,7 @@ static int __nvmf_supported_options(nvme_root_t r);
 	ret;								\
 })
 
-#define add_int_or_minus_one_argument(o, argstr, tok, arg)		\
+#define add_int_or_minus_one_argument(r, argstr, tok, arg)		\
 ({									\
 	int ret;							\
 	if (nvmf_check_option(r, tok)) {				\
@@ -552,6 +585,9 @@ static int build_options(nvme_host_t h, nvme_ctrl_t c, char **argstr)
 	const char *hostnqn, *hostid, *hostkey, *ctrlkey;
 	bool discover = false, discovery_nqn = false;
 	nvme_root_t r = h->r;
+	long keyring_id = 0;
+	long key_id = 0;
+	int ret;
 
 	if (!transport) {
 		nvme_msg(h->r, LOG_ERR, "need a transport (-t) argument\n");
@@ -573,19 +609,39 @@ static int build_options(nvme_host_t h, nvme_ctrl_t c, char **argstr)
 		errno = ENOMEM;
 		return -1;
 	}
+
 	if (!strcmp(nvme_ctrl_get_subsysnqn(c), NVME_DISC_SUBSYS_NAME)) {
 		nvme_ctrl_set_discovery_ctrl(c, true);
 		nvme_ctrl_set_unique_discovery_ctrl(c, false);
 		discovery_nqn = true;
 	}
+
 	if (nvme_ctrl_is_discovery_ctrl(c))
 		discover = true;
+
 	hostnqn = nvme_host_get_hostnqn(h);
 	hostid = nvme_host_get_hostid(h);
 	hostkey = nvme_host_get_dhchap_key(h);
 	if (!hostkey)
 		hostkey = nvme_ctrl_get_dhchap_host_key(c);
+
 	ctrlkey = nvme_ctrl_get_dhchap_key(c);
+
+	if (cfg->tls) {
+		ret = __nvme_import_keys_from_config(h, c, &keyring_id, &key_id);
+		if (ret) {
+			errno = -ret;
+			return -1;
+		}
+
+		if (key_id == 0) {
+			if (cfg->tls_configured_key)
+				key_id = cfg->tls_configured_key;
+			else
+				key_id = cfg->tls_key;
+		}
+	}
+
 	if (add_argument(r, argstr, transport, transport) ||
 	    add_argument(r, argstr, traddr,
 			 nvme_ctrl_get_traddr(c)) ||
@@ -627,9 +683,9 @@ static int build_options(nvme_host_t h, nvme_ctrl_t c, char **argstr)
 			      cfg->fast_io_fail_tmo, false)) ||
 	    (strcmp(transport, "loop") &&
 	     add_int_argument(r, argstr, tos, cfg->tos, true)) ||
-	    add_int_argument(r, argstr, keyring, cfg->keyring, false) ||
+	    add_hex_argument(r, argstr, keyring, keyring_id, false) ||
 	    (!strcmp(transport, "tcp") &&
-	     add_int_argument(r, argstr, tls_key, cfg->tls_key, false)) ||
+	     add_hex_argument(r, argstr, tls_key, key_id, false)) ||
 	    add_bool_argument(r, argstr, duplicate_connect,
 			      cfg->duplicate_connect) ||
 	    add_bool_argument(r, argstr, disable_sqflow,
@@ -760,7 +816,7 @@ static int __nvmf_add_ctrl(nvme_root_t r, const char *argstr)
 		 (int)strcspn(argstr,"\n"), argstr);
 	ret = write(fd, argstr, len);
 	if (ret != len) {
-		nvme_msg(r, LOG_NOTICE, "Failed to write to %s: %s\n",
+		nvme_msg(r, LOG_INFO, "Failed to write to %s: %s\n",
 			 nvmf_dev, strerror(errno));
 		switch (errno) {
 		case EALREADY:
@@ -777,6 +833,8 @@ static int __nvmf_add_ctrl(nvme_root_t r, const char *argstr)
 			return -ENVME_CONNECT_CONNREFUSED;
 		case EADDRNOTAVAIL:
 			return -ENVME_CONNECT_ADDRNOTAVAIL;
+		case ENOKEY:
+			return -ENVME_CONNECT_NOKEY;
 		default:
 			return -ENVME_CONNECT_WRITE;
 		}
@@ -864,6 +922,15 @@ int nvmf_add_ctrl(nvme_host_t h, nvme_ctrl_t c,
 			key = nvme_ctrl_get_dhchap_key(fc);
 			if (key)
 				nvme_ctrl_set_dhchap_key(c, key);
+			key = nvme_ctrl_get_keyring(fc);
+			if (key)
+				nvme_ctrl_set_keyring(c, key);
+			key = nvme_ctrl_get_tls_key_identity(fc);
+			if (key)
+				nvme_ctrl_set_tls_key_identity(c, key);
+			key = nvme_ctrl_get_tls_key(fc);
+			if (key)
+				nvme_ctrl_set_tls_key(c, key);
 		}
 
 	}
@@ -914,6 +981,24 @@ int nvmf_add_ctrl(nvme_host_t h, nvme_ctrl_t c,
 	nvme_msg(h->r, LOG_INFO, "nvme%d: %s connected\n", ret,
 		 nvme_ctrl_get_subsysnqn(c));
 	return nvme_init_ctrl(h, c, ret);
+}
+
+int nvmf_connect_ctrl(nvme_ctrl_t c)
+{
+	_cleanup_free_ char *argstr = NULL;
+	int ret;
+
+	ret = build_options(c->s->h, c, &argstr);
+	if (ret)
+		return ret;
+
+	ret = __nvmf_add_ctrl(c->s->h->r, argstr);
+	if (ret < 0) {
+		errno = -ret;
+		return -1;
+	}
+
+	return 0;
 }
 
 nvme_ctrl_t nvmf_connect_disc_entry(nvme_host_t h,

@@ -7,7 +7,7 @@ Linux NVMe ioctl interface functions
 
 
 
-.. c:struct:: nvme_passthru_cmd
+.. c:type:: struct nvme_passthru_cmd
 
    nvme passthrough command structure
 
@@ -96,7 +96,7 @@ Linux NVMe ioctl interface functions
 
 
 
-.. c:struct:: nvme_passthru_cmd64
+.. c:type:: struct nvme_passthru_cmd64
 
    64-bit nvme passthrough command structure
 
@@ -189,7 +189,7 @@ Linux NVMe ioctl interface functions
 
 
 
-.. c:struct:: nvme_uring_cmd
+.. c:type:: struct nvme_uring_cmd
 
    nvme uring command structure
 
@@ -276,9 +276,7 @@ Linux NVMe ioctl interface functions
 
 
 
-.. c:macro:: sizeof_args
-
-``sizeof_args (type, member, align)``
+.. c:function:: sizeof_args (type, member, align)
 
    Helper function used to determine structure sizes
 
@@ -2416,6 +2414,27 @@ The nvme command status if a response was received (see
 
 ``void *pevent_log``
   User address to store the persistent event log
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+.. c:function:: int nvme_get_log_lockdown (int fd, __u8 cnscp, struct nvme_lockdown_log *lockdown_log)
+
+   Retrieve lockdown Log
+
+**Parameters**
+
+``int fd``
+  File descriptor of nvme device
+
+``__u8 cnscp``
+  Contents and Scope of Command and Feature Identifier Lists
+
+``struct nvme_lockdown_log *lockdown_log``
+  Buffer to store the lockdown log
 
 **Return**
 

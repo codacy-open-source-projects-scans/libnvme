@@ -1151,6 +1151,51 @@ void nvme_ctrl_set_dhchap_key(nvme_ctrl_t c, const char *key)
 		c->dhchap_ctrl_key = strdup(key);
 }
 
+const char *nvme_ctrl_get_keyring(nvme_ctrl_t c)
+{
+	return c->keyring;
+}
+
+void nvme_ctrl_set_keyring(nvme_ctrl_t c, const char *keyring)
+{
+	if (c->keyring) {
+		free(c->keyring);
+		c->keyring = NULL;
+	}
+	if (keyring)
+		c->keyring = strdup(keyring);
+}
+
+const char *nvme_ctrl_get_tls_key_identity(nvme_ctrl_t c)
+{
+	return c->tls_key_identity;
+}
+
+void nvme_ctrl_set_tls_key_identity(nvme_ctrl_t c, const char *identity)
+{
+	if (c->tls_key_identity) {
+		free(c->tls_key_identity);
+		c->tls_key_identity = NULL;
+	}
+	if (identity)
+		c->tls_key_identity = strdup(identity);
+}
+
+const char *nvme_ctrl_get_tls_key(nvme_ctrl_t c)
+{
+	return c->tls_key;
+}
+
+void nvme_ctrl_set_tls_key(nvme_ctrl_t c, const char *key)
+{
+	if (c->tls_key) {
+		free(c->tls_key);
+		c->tls_key = NULL;
+	}
+	if (key)
+		c->tls_key = strdup(key);
+}
+
 void nvme_ctrl_set_discovered(nvme_ctrl_t c, bool discovered)
 {
 	c->discovered = discovered;
@@ -1232,6 +1277,9 @@ void nvme_deconfigure_ctrl(nvme_ctrl_t c)
 	FREE_CTRL_ATTR(c->sqsize);
 	FREE_CTRL_ATTR(c->dhchap_key);
 	FREE_CTRL_ATTR(c->dhchap_ctrl_key);
+	FREE_CTRL_ATTR(c->keyring);
+	FREE_CTRL_ATTR(c->tls_key_identity);
+	FREE_CTRL_ATTR(c->tls_key);
 	FREE_CTRL_ATTR(c->address);
 	FREE_CTRL_ATTR(c->dctype);
 	FREE_CTRL_ATTR(c->cntrltype);
@@ -1883,33 +1931,9 @@ static char *nvme_ctrl_lookup_phy_slot(nvme_root_t r, const char *address)
 	return NULL;
 }
 
-static int nvme_configure_ctrl(nvme_root_t r, nvme_ctrl_t c, const char *path,
-			       const char *name)
+static void nvme_read_sysfs_dhchap(nvme_root_t r, nvme_ctrl_t c)
 {
-	DIR *d;
 	char *host_key, *ctrl_key;
-
-	_cleanup_free_ char *tls_psk = NULL;
-
-	d = opendir(path);
-	if (!d) {
-		nvme_msg(r, LOG_ERR, "Failed to open ctrl dir %s, error %d\n",
-			 path, errno);
-		errno = ENODEV;
-		return -1;
-	}
-	closedir(d);
-
-	c->fd = -1;
-	c->name = strdup(name);
-	c->sysfs_dir = (char *)path;
-	c->firmware = nvme_get_ctrl_attr(c, "firmware_rev");
-	c->model = nvme_get_ctrl_attr(c, "model");
-	c->state = nvme_get_ctrl_attr(c, "state");
-	c->numa_node = nvme_get_ctrl_attr(c, "numa_node");
-	c->queue_count = nvme_get_ctrl_attr(c, "queue_count");
-	c->serial = nvme_get_ctrl_attr(c, "serial");
-	c->sqsize = nvme_get_ctrl_attr(c, "sqsize");
 
 	host_key = nvme_get_ctrl_attr(c, "dhchap_secret");
 	if (host_key && c->s && c->s->h && c->s->h->dhchap_key &&
@@ -1932,22 +1956,74 @@ static int nvme_configure_ctrl(nvme_root_t r, nvme_ctrl_t c, const char *path,
 		nvme_ctrl_set_dhchap_key(c, NULL);
 		c->dhchap_ctrl_key = ctrl_key;
 	}
+}
 
-	tls_psk = nvme_get_ctrl_attr(c, "tls_key");
-	if (tls_psk) {
-		char *endptr;
-		long key_id = strtol(tls_psk, &endptr, 16);
+static void nvme_read_sysfs_tls(nvme_root_t r, nvme_ctrl_t c)
+{
+	char *endptr;
+	long key_id;
+	char *key, *keyring;
 
-		if (endptr != tls_psk) {
-			c->cfg.tls_key = key_id;
-			c->cfg.tls = true;
-		}
+	key = nvme_get_ctrl_attr(c, "tls_key");
+	if (!key) {
+		/* tls_key is only present if --tls has been used. */
+		return;
 	}
+	c->cfg.tls = true;
 
+	keyring = nvme_get_ctrl_attr(c, "tls_keyring");
+	nvme_ctrl_set_keyring(c, keyring);
+	free(keyring);
+
+	/* the sysfs entry is not prefixing the id but it's in hex */
+	key_id = strtol(key, &endptr, 16);
+	if (endptr != key)
+		c->cfg.tls_key = key_id;
+
+	free(key);
+
+	key = nvme_get_ctrl_attr(c, "tls_configured_key");
+	if (!key)
+		return;
+
+	/* the sysfs entry is not prefixing the id but it's in hex */
+	key_id = strtol(key, &endptr, 16);
+	if (endptr != key)
+		c->cfg.tls_configured_key = key_id;
+
+	free(key);
+}
+
+static int nvme_configure_ctrl(nvme_root_t r, nvme_ctrl_t c, const char *path,
+			       const char *name)
+{
+	DIR *d;
+
+	d = opendir(path);
+	if (!d) {
+		nvme_msg(r, LOG_ERR, "Failed to open ctrl dir %s, error %d\n",
+			 path, errno);
+		errno = ENODEV;
+		return -1;
+	}
+	closedir(d);
+
+	c->fd = -1;
+	c->name = strdup(name);
+	c->sysfs_dir = (char *)path;
+	c->firmware = nvme_get_ctrl_attr(c, "firmware_rev");
+	c->model = nvme_get_ctrl_attr(c, "model");
+	c->state = nvme_get_ctrl_attr(c, "state");
+	c->numa_node = nvme_get_ctrl_attr(c, "numa_node");
+	c->queue_count = nvme_get_ctrl_attr(c, "queue_count");
+	c->serial = nvme_get_ctrl_attr(c, "serial");
+	c->sqsize = nvme_get_ctrl_attr(c, "sqsize");
 	c->cntrltype = nvme_get_ctrl_attr(c, "cntrltype");
 	c->cntlid = nvme_get_ctrl_attr(c, "cntlid");
 	c->dctype = nvme_get_ctrl_attr(c, "dctype");
 	c->phy_slot = nvme_ctrl_lookup_phy_slot(r, c->address);
+	nvme_read_sysfs_dhchap(r, c);
+	nvme_read_sysfs_tls(r, c);
 
 	errno = 0; /* cleanup after nvme_get_ctrl_attr() */
 	return 0;

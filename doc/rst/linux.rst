@@ -34,7 +34,7 @@ The nvme command status if a response was received (see
 
 
 
-.. c:enum:: nvme_telemetry_da
+.. c:type:: enum nvme_telemetry_da
 
    Telemetry Log Data Area
 
@@ -352,7 +352,7 @@ errno set otherwise.
 
 
 
-.. c:enum:: nvme_hmac_alg
+.. c:type:: enum nvme_hmac_alg
 
    HMAC algorithm
 
@@ -541,7 +541,7 @@ inaccessible.
 Key id of the new key or 0 with errno set otherwise.
 
 
-.. c:macro:: nvme_scan_tls_keys_cb_t
+.. c:type:: nvme_scan_tls_keys_cb_t
 
    **Typedef**: Callback for iterating TLS keys
 
@@ -760,6 +760,37 @@ on error. It is the responsibility of the caller to free the returned
 string.
 
 
+.. c:function:: char * nvme_export_tls_key_versioned (unsigned char version, unsigned char hmac, const unsigned char *key_data, size_t key_len)
+
+   Export a TLS pre-shared key
+
+**Parameters**
+
+``unsigned char version``
+  Indicated the representation of the TLS PSK
+
+``unsigned char hmac``
+  HMAC algorithm used to transfor the configured PSK
+  in a retained PSK
+
+``const unsigned char *key_data``
+  Raw data of the key
+
+``size_t key_len``
+  Length of **key_data**
+
+**Description**
+
+Returns **key_data** in the PSK Interchange format as defined in section
+3.6.1.5 of the NVMe TCP Transport specification.
+
+**Return**
+
+The string containing the TLS identity or NULL with errno set
+on error. It is the responsibility of the caller to free the returned
+string.
+
+
 .. c:function:: unsigned char * nvme_import_tls_key (const char *encoded_key, int *key_len, unsigned int *hmac)
 
    Import a TLS key
@@ -774,6 +805,36 @@ string.
 
 ``unsigned int *hmac``
   HMAC algorithm
+
+**Description**
+
+Imports **key_data** in the PSK Interchange format as defined in section
+3.6.1.5 of the NVMe TCP Transport specification.
+
+**Return**
+
+The raw data of the PSK or NULL with errno set on error. It is
+the responsibility of the caller to free the returned string.
+
+
+.. c:function:: unsigned char * nvme_import_tls_key_versioned (const char *encoded_key, unsigned char *version, unsigned char *hmac, size_t *key_len)
+
+   Import a TLS key
+
+**Parameters**
+
+``const char *encoded_key``
+  TLS key in PSK interchange format
+
+``unsigned char *version``
+  Indicated the representation of the TLS PSK
+
+``unsigned char *hmac``
+  HMAC algorithm used to transfor the configured
+  PSK in a retained PSK
+
+``size_t *key_len``
+  Length of the resulting key data
 
 **Description**
 
