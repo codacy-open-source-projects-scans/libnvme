@@ -17,8 +17,8 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 
-#include "ioctl.h"
-#include "util.h"
+#include <nvme/ioctl.h>
+#include <nvme/util.h>
 
 /**
  * DOC: tree.h
@@ -27,6 +27,7 @@
  */
 
 typedef struct nvme_ns *nvme_ns_t;
+typedef struct nvme_ns_head *nvme_ns_head_t;
 typedef struct nvme_path *nvme_path_t;
 typedef struct nvme_ctrl *nvme_ctrl_t;
 typedef struct nvme_subsystem *nvme_subsystem_t;
@@ -867,6 +868,22 @@ const char *nvme_path_get_sysfs_dir(nvme_path_t p);
 const char *nvme_path_get_ana_state(nvme_path_t p);
 
 /**
+ * nvme_path_get_numa_nodes() - NUMA nodes of an nvme_path_t object
+ * @p : &nvme_path_t object
+ *
+ * Return: NUMA nodes associated to @p
+ */
+const char *nvme_path_get_numa_nodes(nvme_path_t p);
+
+/**
+ * nvme_path_get_queue_depth() - Queue depth of an nvme_path_t object
+ * @p: &nvme_path_t object
+ *
+ * Return: Queue depth of @p
+ */
+int nvme_path_get_queue_depth(nvme_path_t p);
+
+/**
  * nvme_path_get_ctrl() - Parent controller of an nvme_path_t object
  * @p:	&nvme_path_t object
  *
@@ -1090,6 +1107,14 @@ void nvme_ctrl_set_dhchap_host_key(nvme_ctrl_t c, const char *key);
  * Return: DH-HMAC-CHAP controller key or NULL if not set
  */
 const char *nvme_ctrl_get_dhchap_key(nvme_ctrl_t c);
+
+/**
+ * nvme_ns_head_get_sysfs_dir() - sysfs dir of namespave head
+ * @head: namespace head instance
+ *
+ * Returns: sysfs directory name of @head
+ */
+const char *nvme_ns_head_get_sysfs_dir(nvme_ns_head_t head);
 
 /**
  * nvme_ctrl_set_dhchap_key() - Set controller key
@@ -1347,6 +1372,30 @@ void nvme_subsystem_set_application(nvme_subsystem_t s, const char *a);
 const char *nvme_subsystem_get_iopolicy(nvme_subsystem_t s);
 
 /**
+ * nvme_subsystem_get_model() - Return the model of subsystem
+ * @s:	nvme_subsystem_t object
+ *
+ * Return: Model of the current subsystem
+ */
+const char *nvme_subsystem_get_model(nvme_subsystem_t s);
+
+/**
+ * nvme_subsystem_get_serial() - Return the serial number of subsystem
+ * @s:	nvme_subsystem_t object
+ *
+ * Return: Serial number of the current subsystem
+ */
+const char *nvme_subsystem_get_serial(nvme_subsystem_t s);
+
+/**
+ * nvme_subsystem_get_fw_rev() - Return the firmware rev of subsystem
+ * @s:	nvme_subsystem_t object
+ *
+ * Return: Firmware revision of the current subsystem
+ */
+const char *nvme_subsystem_get_fw_rev(nvme_subsystem_t s);
+
+/**
  * nvme_scan_topology() - Scan NVMe topology and apply filter
  * @r:	    nvme_root_t object
  * @f:	    filter to apply
@@ -1355,7 +1404,7 @@ const char *nvme_subsystem_get_iopolicy(nvme_subsystem_t s);
  * Scans the NVMe topology and filters out the resulting elements
  * by applying @f.
  *
- * Return: Number of elements scanned
+ * Returns: 0 on success, -1 on failure with errno set.
  */
 int nvme_scan_topology(nvme_root_t r, nvme_scan_filter_t f, void *f_args);
 

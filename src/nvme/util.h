@@ -11,7 +11,7 @@
 
 #include <ifaddrs.h>
 
-#include "types.h"
+#include <nvme/types.h>
 
 /**
  * DOC: util.h
@@ -263,13 +263,16 @@ static inline void nvme_feature_decode_lba_range(__u32 value, __u8 *num)
 #define NVME_FEAT_TT_TMPTH(v)		NVME_GET(v, FEAT_TT_TMPTH)
 #define NVME_FEAT_TT_TMPSEL(v)		NVME_GET(v, FEAT_TT_TMPSEL)
 #define NVME_FEAT_TT_THSEL(v)		NVME_GET(v, FEAT_TT_THSEL)
+#define NVME_FEAT_TT_TMPTHH(v)		NVME_GET(v, FEAT_TT_TMPTHH)
 
 static inline void nvme_feature_decode_temp_threshold(__u32 value, __u16 *tmpth,
-						      __u8 *tmpsel, __u8 *thsel)
+						      __u8 *tmpsel, __u8 *thsel,
+						      __u8 *tmpthh)
 {
 	*tmpth	= NVME_FEAT_TT_TMPTH(value);
 	*tmpsel	= NVME_FEAT_TT_TMPSEL(value);
 	*thsel	= NVME_FEAT_TT_THSEL(value);
+	*tmpthh	= NVME_FEAT_TT_TMPTHH(value);
 }
 
 #define NVME_FEAT_ER_TLER(v)		NVME_GET(v, FEAT_ERROR_RECOVERY_TLER)
@@ -337,6 +340,16 @@ static inline void nvme_feature_decode_write_atomicity(__u32 value, bool *dn)
 #define NVME_FEAT_AE_PLA(v)		NVME_GET(v, FEAT_AE_PLA)
 #define NVME_FEAT_AE_LBAS(v)		NVME_GET(v, FEAT_AE_LBAS)
 #define NVME_FEAT_AE_EGA(v)		NVME_GET(v, FEAT_AE_EGA)
+#define NVME_FEAT_AE_NNSSHDN(v)		NVME_GET(v, FEAT_AE_NNSSHDN)
+#define NVME_FEAT_AE_TTHRY(v)		NVME_GET(v, FEAT_AE_TTHRY)
+#define NVME_FEAT_AE_RASSN(v)		NVME_GET(v, FEAT_AE_RASSN)
+#define NVME_FEAT_AE_RGRP0(v)		NVME_GET(v, FEAT_AE_RGRP0)
+#define NVME_FEAT_AE_ANSAN(v)		NVME_GET(v, FEAT_AE_ANSAN)
+#define NVME_FEAT_AE_ZDCN(v)		NVME_GET(v, FEAT_AE_ZDCN)
+#define NVME_FEAT_AE_PMDRLPCN(v)	NVME_GET(v, FEAT_AE_PMDRLPCN)
+#define NVME_FEAT_AE_ADLPCN(v)		NVME_GET(v, FEAT_AE_ADLPCN)
+#define NVME_FEAT_AE_HDLPCN(v)		NVME_GET(v, FEAT_AE_HDLPCN)
+#define NVME_FEAT_AE_DLPCN(v)		NVME_GET(v, FEAT_AE_DLPCN)
 
 static inline void nvme_feature_decode_async_event_config(__u32 value,
 			  __u8 *smart, bool *nan, bool *fw, bool *telem,
@@ -438,6 +451,15 @@ static inline void nvme_feature_decode_endurance_group_event_config(__u32 value,
 	*endgcw	= NVME_FEAT_EG_EGCW(value);
 }
 
+#define NVME_FEAT_PERFC_ATTRI(v) NVME_GET(v, FEAT_PERFC_ATTRI)
+#define NVME_FEAT_PERFC_RVSPA(v) NVME_GET(v, FEAT_PERFC_RVSPA)
+
+static inline void nvme_feature_decode_perf_characteristics(__u32 value, __u8 *attri, bool *rvspa)
+{
+	*attri = NVME_FEAT_PERFC_ATTRI(value);
+	*rvspa = NVME_FEAT_PERFC_RVSPA(value);
+}
+
 #define NVME_FEAT_SPM_PBSLC(v)		NVME_GET(v, FEAT_SPM_PBSLC)
 
 static inline void nvme_feature_decode_software_progress_marker(__u32 value,
@@ -482,6 +504,9 @@ static inline void nvme_feature_decode_namespace_write_protect(__u32 value,
 {
 	*wps	= NVME_FEAT_WP_WPS(value);
 }
+
+#define NVME_FEAT_BPWPC_BP0WPS(v)	NVME_GET(v, FEAT_BPWPC_BP0WPS)
+#define NVME_FEAT_BPWPC_BP1WPS(v)	NVME_GET(v, FEAT_BPWPC_BP1WPS)
 
 static inline void nvme_id_ns_flbas_to_lbaf_inuse(__u8 flbas, __u8 *lbaf_inuse)
 {
@@ -560,8 +585,6 @@ char *kv_keymatch(const char *kv, const char *key);
  */
 char *startswith(const char *s, const char *prefix);
 
-#define min(x, y) ((x) > (y) ? (y) : (x))
-
 #define __round_mask(val, mult) ((__typeof__(val))((mult)-1))
 
 /**
@@ -637,9 +660,6 @@ enum nvme_version {
  * Return: Returns version string for known types or else "n/a"
  */
 const char *nvme_get_version(enum nvme_version type);
-
-#define NVME_UUID_LEN_STRING	37  /* 1b4e28ba-2fa1-11d2-883f-0016d3cca427 + \0 */
-#define NVME_UUID_LEN		16
 
 /**
  * nvme_uuid_to_string - Return string represenation of encoded UUID

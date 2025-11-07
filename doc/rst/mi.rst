@@ -107,6 +107,9 @@ bit (0x80) set.
 ``NVME_MI_MT_PCIE``
   PCIe command
 
+``NVME_MI_MT_AE``
+  Asynchronous Event
+
 **Description**
 
 Used as byte 1 of both request and response messages (NMIMT bits of NMP
@@ -412,9 +415,11 @@ indicate the particular structure to query from the endpoint.
   MCTP maximum transmission unit size of port
   specified in dw 0
 
-**Description**
+``NVME_MI_CONFIG_AE``
+  Asynchronous Events configuration
+  Configuration parameters for the MI Get/Set Configuration commands.
 
-Configuration parameters for the MI Get/Set Configuration commands.
+**Description**
 
 See :c:type:`nvme_mi_mi_config_get`() and :c:type:`nvme_mi_config_set`().
 
@@ -440,6 +445,455 @@ See :c:type:`nvme_mi_mi_config_get`() and :c:type:`nvme_mi_config_set`().
 
 Values used in the SMBus Frequency device configuration. See
 :c:type:`nvme_mi_mi_config_get_smbus_freq`() and :c:type:`nvme_mi_mi_config_set_smbus_freq`().
+
+
+
+
+.. c:type:: struct nvme_mi_aem_supported_list_header
+
+   Asynchronous Event Supported List Header.
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_supported_list_header {
+    __u8 numaes;
+    __u8 aeslver;
+    __le16 aest;
+    __u8 aeslhl;
+  };
+
+**Members**
+
+``numaes``
+  Number of AE supported data structures that follow the header
+
+``aeslver``
+  AE Supported List Version
+
+``aest``
+  AE Supported list length (including this header)
+
+``aeslhl``
+  AE Supported list header length
+
+
+**Description**
+
+This header preceeds a number, (:c:type:`numaes`), of AE supported data structures
+
+
+
+
+.. c:type:: struct nvme_mi_aem_supported_item
+
+   AE Supported List Item
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_supported_item {
+    __u8 aesl;
+    __le16 aesi;
+  };
+
+**Members**
+
+``aesl``
+  AE supported list item length
+
+``aesi``
+  AE supported info
+
+
+**Description**
+
+Following this header should be hdr.numaes entries of
+nvme_mi_aem_supported_item structures
+
+
+.. c:function:: bool nvme_mi_aem_aesi_get_aese (__le16 aesi)
+
+   return aese from aesi field
+
+**Parameters**
+
+``__le16 aesi``
+  aesi field from **nvme_mi_aem_supported_item**
+
+**Return**
+
+A bool representing the aese value
+
+
+.. c:function:: __u8 nvme_mi_aem_aesi_get_aesid (__le16 aesi)
+
+   return aesid from aesi field
+
+**Parameters**
+
+``__le16 aesi``
+  aesi field from **nvme_mi_aem_supported_item**
+
+**Return**
+
+aesid value
+
+
+.. c:function:: void nvme_mi_aem_aesi_set_aesid (struct nvme_mi_aem_supported_item *item, __u8 aesid)
+
+   set aesid in the aesi field
+
+**Parameters**
+
+``struct nvme_mi_aem_supported_item *item``
+  Pointer to **nvme_mi_aem_supported_item** to update the aesi field
+
+``__u8 aesid``
+  aesid value to use
+
+
+.. c:function:: void nvme_mi_aem_aesi_set_aee (struct nvme_mi_aem_supported_item *item, bool enabled)
+
+   set aee in the aesi field
+
+**Parameters**
+
+``struct nvme_mi_aem_supported_item *item``
+  Pointer to **nvme_mi_aem_supported_item** to update the aesi field
+
+``bool enabled``
+  aee value to use
+
+
+
+
+.. c:type:: struct nvme_mi_aem_supported_list
+
+   AE Supported List received with GET CONFIG Asynchronous Event
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_supported_list {
+    struct nvme_mi_aem_supported_list_header hdr;
+  };
+
+**Members**
+
+``hdr``
+  AE supported list header
+
+
+**Description**
+
+Following this header should be hdr.numaes entries of
+nvme_mi_aem_supported_item structures
+
+
+
+
+.. c:type:: struct nvme_mi_aem_enable_item
+
+   AE Enabled item entry
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_enable_item {
+    __u8 aeel;
+    __le16 aeei;
+  };
+
+**Members**
+
+``aeel``
+  AE Enable Length (length of this structure which is 3)
+
+``aeei``
+  AE Enable Info
+
+
+
+.. c:function:: bool nvme_mi_aem_aeei_get_aee (__le16 aeei)
+
+   return aee from aeei field
+
+**Parameters**
+
+``__le16 aeei``
+  aeei field from **nvme_mi_aem_enable_item**
+
+**Return**
+
+aee value
+
+
+.. c:function:: __u8 nvme_mi_aem_aeei_get_aeeid (__le16 aeei)
+
+   return aeeid from aeei field
+
+**Parameters**
+
+``__le16 aeei``
+  aeei field from **nvme_mi_aem_enable_item**
+
+**Return**
+
+aeeid value
+
+
+.. c:function:: void nvme_mi_aem_aeei_set_aeeid (struct nvme_mi_aem_enable_item *item, __u8 aeeid)
+
+   set aeeid in the aeei field
+
+**Parameters**
+
+``struct nvme_mi_aem_enable_item *item``
+  Pointer to **nvme_mi_aem_enable_item** to update the aeei field
+
+``__u8 aeeid``
+  aeeid value to use
+
+
+.. c:function:: void nvme_mi_aem_aeei_set_aee (struct nvme_mi_aem_enable_item *item, bool enabled)
+
+   set aee in the aeei field
+
+**Parameters**
+
+``struct nvme_mi_aem_enable_item *item``
+  Pointer to **nvme_mi_aem_enable_item** to update the aee field
+
+``bool enabled``
+  aee value to use
+
+
+
+
+.. c:type:: struct nvme_mi_aem_enable_list_header
+
+   AE Enable list header
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_enable_list_header {
+    __u8 numaee;
+    __u8 aeelver;
+    __le16 aeetl;
+    __u8 aeelhl;
+  };
+
+**Members**
+
+``numaee``
+  Number of AE enable items following the header
+
+``aeelver``
+  Version of the AE enable list (zero)
+
+``aeetl``
+  Total length of the AE enable list including header and items
+
+``aeelhl``
+  Header length of this header (5)
+
+
+
+
+
+.. c:type:: struct nvme_mi_aem_enable_list
+
+   AE enable list sent with SET CONFIG Asyncronous Event
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_enable_list {
+    struct nvme_mi_aem_enable_list_header hdr;
+  };
+
+**Members**
+
+``hdr``
+  AE enable list header
+
+
+**Description**
+
+Following this header should be hdr.numaee entries of nvme_mi_aem_enable_item structures
+
+
+
+
+.. c:type:: struct nvme_mi_aem_occ_data
+
+   AEM Message definition.
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_occ_data {
+    __u8 aelhlen;
+    __u8 aeosil;
+    __u8 aeovsil;
+    struct {
+      __u8 aeoi;
+      __le32 aeocidi;
+      __u8 aessi;
+    } aeoui;
+  };
+
+**Members**
+
+``aelhlen``
+  AE Occurrence Header Length
+
+``aeosil``
+  AE Occurrence Specific Info Length
+
+``aeovsil``
+  AE Occurrence Vendor Specific Info Length
+
+``aeoui``
+  AE Occurrence Unique ID made up of other subfields
+
+
+**Description**
+
+A single entry of ae occurrence data that comes with an nvme_aem_msg.
+Following this structure is variable length AEOSI (occurrence specific
+info) and variable length AEVSI (vendor specific info).  The length of
+AEOSI is specified by aeosil and the length of AEVSI is specified by
+AEVSI.  Neither field is mandatory and shall be omitted if their length
+parameter is set to zero.
+
+
+
+
+.. c:type:: struct nvme_mi_aem_occ_list_hdr
+
+   AE occurrence list header
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_occ_list_hdr {
+    __u8 numaeo;
+    __u8 aelver;
+    __u8 aeolli[3];
+    __u8 aeolhl;
+    __u8 aemti;
+  };
+
+**Members**
+
+``numaeo``
+  Number of AE Occurrence Data Structures
+
+``aelver``
+  AE Occurrence List Version Number
+
+``aeolli``
+  AE Occurrence List Length Info (AEOLLI)
+
+``aeolhl``
+  AE Occurrence List Header Length (shall be set to 7)
+
+``aemti``
+  AEM Transmission Info
+
+
+**Description**
+
+The header for the occurrence list.  numaeo defines how many
+nvme_mi_aem_occ_data structures (including variable payaloads) are included.
+Following this header is each of the numaeo occurrence data structures.
+
+
+.. c:function:: __u8 nvme_mi_aem_aemti_get_aemgn (__u8 aemti)
+
+   return aemgn from aemti field
+
+**Parameters**
+
+``__u8 aemti``
+  aemti field from **nvme_mi_aem_occ_list_hdr**
+
+**Return**
+
+aemgn value
+
+
+.. c:function:: __u32 nvme_mi_aem_aeolli_get_aeoltl (__u8 *aeolli)
+
+   return aeoltl from aeolli field
+
+**Parameters**
+
+``__u8 *aeolli``
+  Pointer to 3 byte aeolli field from **nvme_mi_aem_occ_list_hdr**
+
+**Return**
+
+aeoltl value
+
+
+.. c:function:: void nvme_mi_aem_aeolli_set_aeoltl (struct nvme_mi_aem_occ_list_hdr *hdr, __u32 aeoltl)
+
+   set aeoltl in the aeolli field
+
+**Parameters**
+
+``struct nvme_mi_aem_occ_list_hdr *hdr``
+  Pointer to **nvme_mi_aem_occ_list_hdr** to set the aeolli field
+
+``__u32 aeoltl``
+  aeoltl value to use
+
+
+
+
+.. c:type:: struct nvme_mi_aem_msg
+
+   AEM Message definition.
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_msg {
+    struct nvme_mi_msg_hdr hdr;
+    struct nvme_mi_aem_occ_list_hdr occ_list_hdr;
+  };
+
+**Members**
+
+``hdr``
+  the general response message header
+
+``occ_list_hdr``
+  ae occurrence list header.
+
+
+**Description**
+
+Every ae message will start with one of these.  The occ_list_hder wil define
+information about how many ae occ data entries are included.  Each entry is
+defined by the nvme_mi_aem_occ_data structure which will follow the
+occ_list_hdr.  Each nvme_mi_aem_occ_data structure has a fixed length header
+but a variable length payload ude to occurrence specific and vendor specific
+info.  For this reason, do not index the nvme_mi_ae_occ data structures by
+array or fixed offset.
 
 
 
@@ -729,6 +1183,23 @@ Subsequent operations on the endpoint (and related controllers) are
 transport-independent.
 
 
+.. c:function:: int nvme_mi_set_csi (nvme_mi_ep_t ep, uint8_t csi)
+
+   Assign a CSI to an endpoint.
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  Endpoint
+
+``uint8_t csi``
+  value to use for CSI bit in NMP (0 or 1) for this endpoint
+
+**Return**
+
+0 if successful, -1 otherwise (some endpoints may not support)
+
+
 .. c:function:: nvme_mi_ep_t nvme_mi_first_endpoint (nvme_root_t m)
 
    Start endpoint iterator
@@ -977,6 +1448,20 @@ See :c:type:`nvme_mi_close`
 New endpoint object for **netid** & **eid**, or NULL on failure.
 
 
+.. c:function:: int nvme_mi_aem_open (nvme_mi_ep_t ep)
+
+   Prepare an existing endpoint to receive AEMs
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  Endpoint to configure for AEMs
+
+**Return**
+
+0 if success, -1 otherwise
+
+
 .. c:function:: void nvme_mi_close (nvme_mi_ep_t ep)
 
    Close an endpoint connection and release resources, including controller objects.
@@ -1116,6 +1601,48 @@ caller is responsible for free()-ing the string.
 
 a newly-allocated string containing the endpoint description, or
         NULL on failure.
+
+
+.. c:function:: int nvme_mi_mi_xfer (nvme_mi_ep_t ep, struct nvme_mi_mi_req_hdr *mi_req, size_t req_data_size, struct nvme_mi_mi_resp_hdr *mi_resp, size_t *resp_data_size)
+
+   Raw mi transfer interface.
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  endpoint to send the MI command to
+
+``struct nvme_mi_mi_req_hdr *mi_req``
+  request data
+
+``size_t req_data_size``
+  size of request data payload
+
+``struct nvme_mi_mi_resp_hdr *mi_resp``
+  buffer for response data
+
+``size_t *resp_data_size``
+  size of response data buffer, updated to received size
+
+**Description**
+
+Performs an arbitrary NVMe MI command, using the provided request data,
+in **mi_req**. The size of the request data *payload* is specified in
+**req_data_size** - this does not include the standard header length (so a
+header-only request would have a size of 0). Note that the Management
+Request Doublewords are considered part of the header data.
+
+On success, response data is stored in **mi_resp**, which has an optional
+appended payload buffer of **resp_data_size** bytes. The actual payload
+size transferred will be stored in **resp_data_size**. This size does not
+include the MI response header, so 0 represents no payload.
+
+See: :c:type:`struct nvme_mi_mi_req_hdr <nvme_mi_mi_req_hdr>` and :c:type:`struct nvme_mi_mi_resp_hdr <nvme_mi_mi_resp_hdr>`.
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise..
 
 
 .. c:function:: int nvme_mi_mi_read_mi_data_subsys (nvme_mi_ep_t ep, struct nvme_mi_read_nvm_ss_info *s)
@@ -1460,6 +1987,90 @@ Some controllers may also use this as the maximum receive unit size, and
 may not accept MCTP messages larger than the configured MTU. When setting
 this value, you will likely need to change the MTU of the local MCTP
 interface(s) to match.
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise..
+
+
+.. c:function:: int nvme_mi_mi_config_get_async_event (nvme_mi_ep_t ep, __u8 *aeelver, struct nvme_mi_aem_supported_list *list, size_t *list_num_bytes)
+
+   get configuration: Asynchronous Event
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  endpoint for MI communication
+
+``__u8 *aeelver``
+  Asynchronous Event Enable List Version Number
+
+``struct nvme_mi_aem_supported_list *list``
+  AE Supported list header and list contents
+
+``size_t *list_num_bytes``
+  number of bytes in the list header and contents buffer.
+  This will be populated with returned size of list and contents if successful.
+
+**Description**
+
+Performs a MI Configuration Get, to query the current enable Asynchronous
+Events.  On success, populates **aeelver** and the **list** with current info,
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise..
+
+
+.. c:function:: int nvme_mi_mi_config_set_async_event (nvme_mi_ep_t ep, bool envfa, bool empfa, bool encfa, __u8 aemd, __u8 aerd, struct nvme_mi_aem_enable_list *enable_list, size_t enable_list_size, struct nvme_mi_aem_occ_list_hdr *occ_list, size_t *occ_list_size)
+
+   set configuration: Asynchronous Event
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  endpoint for MI communication
+
+``bool envfa``
+  Enable SR-IOV Virtual Functions AE
+
+``bool empfa``
+  Enable SR-IOV Physical Functions AE
+
+``bool encfa``
+  Enable PCI Functions AE.
+
+``__u8 aemd``
+  AEM Delay Interval (for Sync only)
+
+``__u8 aerd``
+  AEM Retry Delay (for Sync only; time in 100s of ms)
+
+``struct nvme_mi_aem_enable_list *enable_list``
+  nvme_mi_aem_enable_listucture containing header and items
+  of events to be enabled or disabled.  This is taken as a delta change
+  from the current configuration.
+
+``size_t enable_list_size``
+  Size of the enable_list including header and data.
+  Meant to catch overrun issues.
+
+``struct nvme_mi_aem_occ_list_hdr *occ_list``
+  Pointer to populate with the occurrence list (header and data)
+
+``size_t *occ_list_size``
+  Total size of provided occ_list buffer.  Will be updated
+  with received size if successful
+
+**Description**
+
+Performs a MI Configuration Set, to ACK (sent after an AEM) or Sync (at anytime to enable
+or disable Asynchronous Events).
+
+On success, populates **occ_list**.  See TP6035a for details on how occ_list is populated in
+ACK versus Sync conditions
 
 **Return**
 
@@ -2132,6 +2743,43 @@ The nvme command status if a response was received (see
 :c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
 
 
+.. c:function:: int nvme_mi_admin_get_endgid_log (nvme_mi_ctrl_t ctrl, bool rae, enum nvme_cmd_get_log_lid lid, __u16 endgid, __u32 len, void *log)
+
+   Helper for Get Endurance Group ID Log Page functions
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``bool rae``
+  Retain Asynchronous Events
+
+``enum nvme_cmd_get_log_lid lid``
+  Log identifier
+
+``__u16 endgid``
+  Endurance Group ID
+
+``__u32 len``
+  length of log buffer
+
+``void *log``
+  pointer for resulting log data
+
+**Description**
+
+Performs a Get Log Page Admin command for a specific log ID **lid** and
+endurance group ID **endgid**. Log data is expected to be **len** bytes, and is stored
+in **log** on success. The **rae** flag is passed as-is to the Get Log Page
+command, and is specific to the Log Page requested.
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
 .. c:function:: int nvme_mi_admin_get_log_simple (nvme_mi_ctrl_t ctrl, enum nvme_cmd_get_log_lid lid, __u32 len, void *log)
 
    Helper for Get Log Page functions with no NSID or RAE requirements
@@ -2342,6 +2990,27 @@ The nvme command status if a response was received (see
 The log page indicates the status of an in progress self test and the
 percent complete of that operation, and the results of the previous 20
 self-test operations.
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+.. c:function:: int nvme_mi_admin_get_log_create_telemetry_host_mcda (nvme_mi_ctrl_t ctrl, enum nvme_telemetry_da mcda, struct nvme_telemetry_log *log)
+
+   Create host telemetry log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``enum nvme_telemetry_da mcda``
+  Maximum Created Data Area
+
+``struct nvme_telemetry_log *log``
+  Userspace address of the log payload
 
 **Return**
 
@@ -2736,6 +3405,75 @@ The nvme command status if a response was received (see
 :c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
 
 
+.. c:function:: int nvme_mi_admin_get_log_rotational_media_info (nvme_mi_ctrl_t ctrl, __u16 endgid, __u32 len, struct nvme_rotational_media_info_log *log)
+
+   Retrieve Rotational Media Information Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``__u16 endgid``
+  Endurance Group Identifier
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_rotational_media_info_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
+.. c:function:: int nvme_mi_admin_get_log_dispersed_ns_participating_nss (nvme_mi_ctrl_t ctrl, __u32 nsid, __u32 len, struct nvme_dispersed_ns_participating_nss_log *log)
+
+   Retrieve Dispersed Namespace Participating NVM Subsystems Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``__u32 nsid``
+  Namespace Identifier
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_dispersed_ns_participating_nss_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
+.. c:function:: int nvme_mi_admin_get_log_mgmt_addr_list (nvme_mi_ctrl_t ctrl, __u32 len, struct nvme_mgmt_addr_list_log *log)
+
+   Retrieve Management Address List Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_mgmt_addr_list_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
 .. c:function:: int nvme_mi_admin_get_log_phy_rx_eom (nvme_mi_ctrl_t ctrl, __u8 lsp, __u16 controller, __u32 len, struct nvme_phy_rx_eom_log *log)
 
    Retrieve Physical Interface Receiver Eye Opening Measurement Log
@@ -2756,6 +3494,84 @@ The nvme command status if a response was received (see
   struct nvme_phy_rx_eom_log
 
 ``struct nvme_phy_rx_eom_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
+.. c:function:: int nvme_mi_admin_get_log_reachability_groups (nvme_mi_ctrl_t ctrl, bool rgo, bool rae, __u32 len, struct nvme_reachability_groups_log *log)
+
+   Retrieve Reachability Groups Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``bool rgo``
+  Return groups only
+
+``bool rae``
+  Retain asynchronous events
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_reachability_groups_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
+.. c:function:: int nvme_mi_admin_get_log_reachability_associations (nvme_mi_ctrl_t ctrl, bool rao, bool rae, __u32 len, struct nvme_reachability_associations_log *log)
+
+   Retrieve Reachability Associations Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``bool rao``
+  Return associations only
+
+``bool rae``
+  Retain asynchronous events
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_reachability_associations_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
+.. c:function:: int nvme_mi_admin_get_log_changed_alloc_ns_list (nvme_mi_ctrl_t ctrl, bool rae, __u32 len, struct nvme_ns_list *log)
+
+   Retrieve Changed Allocated Namespace List Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``bool rae``
+  Retain asynchronous events
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_ns_list *log``
   User address to store the log page
 
 **Return**
@@ -2794,6 +3610,81 @@ records.
 
 The nvme command status if a response was received (see
 :c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+.. c:function:: int nvme_mi_admin_get_log_host_discover (nvme_mi_ctrl_t ctrl, bool allhoste, bool rae, __u32 len, struct nvme_host_discover_log *log)
+
+   Retrieve Host Discovery Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``bool allhoste``
+  All host entries
+
+``bool rae``
+  Retain asynchronous events
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_host_discover_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
+.. c:function:: int nvme_mi_admin_get_log_ave_discover (nvme_mi_ctrl_t ctrl, bool rae, __u32 len, struct nvme_ave_discover_log *log)
+
+   Retrieve AVE Discovery Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``bool rae``
+  Retain asynchronous events
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_ave_discover_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
+
+
+.. c:function:: int nvme_mi_admin_get_log_pull_model_ddc_req (nvme_mi_ctrl_t ctrl, bool rae, __u32 len, struct nvme_pull_model_ddc_req_log *log)
+
+   Retrieve Pull Model DDC Request Log
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to query
+
+``bool rae``
+  Retain asynchronous events
+
+``__u32 len``
+  The allocated length of the log page
+
+``struct nvme_pull_model_ddc_req_log *log``
+  User address to store the log page
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise
 
 
 .. c:function:: int nvme_mi_admin_get_log_media_unit_stat (nvme_mi_ctrl_t ctrl, __u16 domid, struct nvme_media_unit_stat_log *mus)
@@ -3047,6 +3938,48 @@ The nvme command status if a response was received (see
 :c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
 
 
+.. c:function:: int nvme_mi_admin_get_features_arbitration (nvme_mi_ctrl_t ctrl, enum nvme_get_features_sel sel, __u32 *result)
+
+   Get arbitration feature
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to send command to
+
+``enum nvme_get_features_sel sel``
+  Select which type of attribute to return, see :c:type:`enum nvme_get_features_sel <nvme_get_features_sel>`
+
+``__u32 *result``
+  The feature data is returned in this argument
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+.. c:function:: int nvme_mi_admin_get_features_power_mgmt (nvme_mi_ctrl_t ctrl, enum nvme_get_features_sel sel, __u32 *result)
+
+   Get power management feature
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to send command to
+
+``enum nvme_get_features_sel sel``
+  Select which type of attribute to return, see :c:type:`enum nvme_get_features_sel <nvme_get_features_sel>`
+
+``__u32 *result``
+  The feature data is returned in this argument
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
 .. c:function:: int nvme_mi_admin_get_features_data (nvme_mi_ctrl_t ctrl, enum nvme_features_id fid, __u32 nsid, __u32 data_len, void *data, __u32 *result)
 
    Helper function for :c:type:`nvme_mi_admin_get_features`()
@@ -3123,6 +4056,33 @@ feature-specific information.
 
 On success, **args->data_len** will be updated with the actual data length
 received.
+
+**Return**
+
+The nvme command status if a response was received (see
+:c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+.. c:function:: int nvme_mi_admin_set_features_power_mgmt (nvme_mi_ctrl_t ctrl, __u8 ps, __u8 wh, bool save, __u32 *result)
+
+   Set power management feature
+
+**Parameters**
+
+``nvme_mi_ctrl_t ctrl``
+  Controller to send command to
+
+``__u8 ps``
+  Power State
+
+``__u8 wh``
+  Workload Hint
+
+``bool save``
+  Save value across power states
+
+``__u32 *result``
+  The feature data is returned in this argument
 
 **Return**
 
@@ -3373,5 +4333,255 @@ command does not indicate completion of the sanitize operation.
 
 The nvme command status if a response was received (see
 :c:type:`enum nvme_status_field <nvme_status_field>`) or -1 with errno set otherwise.
+
+
+
+
+.. c:type:: enum nvme_mi_aem_handler_next_action
+
+   Next action for the AEM state machine handler
+
+**Constants**
+
+``NVME_MI_AEM_HNA_ACK``
+  Send an ack for the AEM
+
+``NVME_MI_AEM_HNA_NONE``
+  No further action
+
+**Description**
+
+Used as return value for the AE callback generated when calling nvme_mi_aem_process
+
+
+
+
+.. c:type:: struct nvme_mi_event
+
+   AE event information structure
+
+**Definition**
+
+::
+
+  struct nvme_mi_event {
+    uint8_t aeoi;
+    uint8_t aessi;
+    uint32_t aeocidi;
+    void *spec_info;
+    size_t spec_info_len;
+    void *vend_spec_info;
+    size_t vend_spec_info_len;
+  };
+
+**Members**
+
+``aeoi``
+  Event identifier
+
+``aessi``
+  Event occurrence scope info
+
+``aeocidi``
+  Event occurrence scope ID info
+
+``spec_info``
+  Specific info buffer
+
+``spec_info_len``
+  Length of specific info buffer
+
+``vend_spec_info``
+  Vendor specific info buffer
+
+``vend_spec_info_len``
+  Length of vendor specific info buffer
+
+
+**Description**
+
+Application callbacks for nvme_mi_aem_process will be able to call
+nvme_mi_aem_get_next_event which will return a pointer to such an identifier
+for the next event the application should parse
+
+
+.. c:function:: struct nvme_mi_event * nvme_mi_aem_get_next_event (nvme_mi_ep_t ep)
+
+   Get details for the next event to parse
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  The endpoint with the event
+
+**Description**
+
+When inside a aem_handler, call this and a returned struct pointer
+will provide details of event information.  Will return NULL when end of parsing is occurred.
+spec_info and vend_spec_info must be copied to persist as they will not be valid
+after the handler_next_action has returned.
+
+**Return**
+
+Pointer no next nvme_mi_event or NULL if this is the last one
+
+
+
+
+.. c:type:: struct nvme_mi_aem_config
+
+   Provided for nvme_mi_aem_enable
+
+**Definition**
+
+::
+
+  struct nvme_mi_aem_config {
+    enum nvme_mi_aem_handler_next_action (*aem_handler)(nvme_mi_ep_t ep,size_t num_events, void *userdata);
+    struct nvme_mi_aem_enabled_map enabled_map;
+    bool envfa;
+    bool empfa;
+    bool encfa;
+    __u8 aemd;
+    __u8 aerd;
+  };
+
+**Members**
+
+``aem_handler``
+  Callback function for application processing of events
+
+``enabled_map``
+  Map indicating which AE should be enabled on the endpoint
+
+``envfa``
+  Enable SR-IOV virtual functions AE
+
+``empfa``
+  Enable SR-IOV physical functions AE
+
+``encfa``
+  Enable PCIe functions AE
+
+``aemd``
+  AEM Delay (time in seconds from when event happens to AEM being batched and sent)
+
+``aerd``
+  AEM Retry Delay (time in 100s of ms between AEM retries from the endpoint)
+
+
+**Description**
+
+Application callbacks for nvme_mi_aem_process will be able to call
+nvme_mi_aem_get_next_event which will return a pointer to such an identifier
+for the next event the application should parse
+
+
+.. c:function:: int nvme_mi_aem_get_fd (nvme_mi_ep_t ep)
+
+   Returns the pollable fd for AEM data available
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  The endpoint being monitored for asynchronous data
+
+**Description**
+
+This populated structure can be polled from the application to understand if
+a call to nvme_mi_aem_process() is required (when a poll returns > 0).
+
+**Return**
+
+The fd value or -1 if error
+
+
+.. c:function:: int nvme_mi_aem_enable (nvme_mi_ep_t ep, struct nvme_mi_aem_config *config, void *userdata)
+
+   Enable AE on the provided endpoint
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  Endpoint to enable AEs
+
+``struct nvme_mi_aem_config *config``
+  AE configuraiton including which events are enabled and the callback function
+
+``void *userdata``
+  Application provided context pointer for callback function
+
+**Description**
+
+This function is called to enable AE on the endpoint.  Endpoint will provide initial state
+(if any) of enabled AEs and application can parse those via the aem_handler fn pointer in
+callbacks.  Thes can be obtained in the callback by calling nvme_mi_aem_get_next_event().
+
+Application should poll the fd that can be obtained from nvme_mi_aem_get_fd and then call
+nvme_mi_aem_process() when poll() indicates data available.
+
+A call to nvme_mi_aem_process() will grab AEM data and call the aem_handler fn pointer.
+At this point the application can call nvme_mi_aem_get_next_event() to get information for
+each triggered event.
+
+**Return**
+
+0 is a success, nonzero is an error and errno may be read for further details
+
+
+.. c:function:: int nvme_mi_aem_get_enabled (nvme_mi_ep_t ep, struct nvme_mi_aem_enabled_map *enabled)
+
+   Return information on which AEs are enabled
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  Endpoint to check enabled status
+
+``struct nvme_mi_aem_enabled_map *enabled``
+  nvme_mi_aem_enabled_map indexed by AE event ID of enabled state
+
+**Return**
+
+0 is a success, nonzero is an error and errno may be read for further details
+
+
+.. c:function:: int nvme_mi_aem_disable (nvme_mi_ep_t ep)
+
+   Disable AE on the provided endpoint
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  Endpoint to disable AEs
+
+**Return**
+
+0 is a success, nonzero is an error and errno may be read for further details
+
+
+.. c:function:: int nvme_mi_aem_process (nvme_mi_ep_t ep, void *userdata)
+
+   Process AEM on the provided endpoint
+
+**Parameters**
+
+``nvme_mi_ep_t ep``
+  Endpoint to process
+
+``void *userdata``
+  Application provided context pointer for callback function
+
+**Description**
+
+Call this if poll() indicates data is available on the fd provided by nvme_mi_aem_get_fd()
+
+This will call the fn pointer, aem_handler, provided with nvme_mi_aem_config and the
+application can call nvme_mi_aem_get_next_event() from within this callback to get
+aem event data.  The callback function should return NVME_MI_AEM_HNA_ACK for normal operation.
+
+**Return**
+
+0 is a success, nonzero is an error and errno may be read for further details
 
 

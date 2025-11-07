@@ -8,6 +8,9 @@
  */
 #include <errno.h>
 #include <fcntl.h>
+#ifdef CONFIG_LIBURING
+#include <liburing.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +23,7 @@
 #include <sys/time.h>
 
 #include <ccan/build_assert/build_assert.h>
+#include <ccan/ccan/minmax/minmax.h>
 #include <ccan/endian/endian.h>
 
 #include "ioctl.h"
@@ -316,6 +320,141 @@ int nvme_get_log(struct nvme_get_log_args *args)
 	return nvme_submit_admin_passthru(args->fd, &cmd, args->result);
 }
 
+static bool force_4k;
+
+__attribute__((constructor))
+static void nvme_init_env(void)
+{
+	char *val;
+
+	val = getenv("LIBNVME_FORCE_4K");
+	if (!val)
+		return;
+	if (!strcmp(val, "1") ||
+	    !strcasecmp(val, "true") ||
+	    !strncasecmp(val, "enable", 6))
+		force_4k = true;
+}
+
+#ifdef CONFIG_LIBURING
+enum {
+	IO_URING_NOT_AVAILABLE,
+	IO_URING_AVAILABLE,
+} io_uring_kernel_support = IO_URING_NOT_AVAILABLE;
+
+/*
+ * gcc specific attribute, call automatically on the library loading.
+ * if IORING_OP_URING_CMD is not supported, fallback to ioctl interface.
+ */
+__attribute__((constructor))
+static void nvme_uring_cmd_probe()
+{
+	struct io_uring_probe *probe = io_uring_get_probe();
+
+	if (!probe)
+		return;
+
+	if (!io_uring_opcode_supported(probe, IORING_OP_URING_CMD))
+		return;
+
+	io_uring_kernel_support = IO_URING_AVAILABLE;
+}
+
+static int nvme_uring_cmd_setup(struct io_uring *ring)
+{
+	return io_uring_queue_init(NVME_URING_ENTRIES, ring,
+				   IORING_SETUP_SQE128 | IORING_SETUP_CQE32);
+}
+
+static void nvme_uring_cmd_exit(struct io_uring *ring)
+{
+	io_uring_queue_exit(ring);
+}
+
+static int nvme_uring_cmd_admin_passthru_async(struct io_uring *ring, struct nvme_get_log_args *args)
+{
+	struct io_uring_sqe *sqe;
+	struct nvme_uring_cmd *cmd;
+	int ret;
+
+	__u32 numd = (args->len >> 2) - 1;
+	__u16 numdu = numd >> 16, numdl = numd & 0xffff;
+
+	__u32 cdw10 = NVME_SET(args->lid, LOG_CDW10_LID) |
+			NVME_SET(args->lsp, LOG_CDW10_LSP) |
+			NVME_SET(!!args->rae, LOG_CDW10_RAE) |
+			NVME_SET(numdl, LOG_CDW10_NUMDL);
+	__u32 cdw11 = NVME_SET(numdu, LOG_CDW11_NUMDU) |
+			NVME_SET(args->lsi, LOG_CDW11_LSI);
+	__u32 cdw12 = args->lpo & 0xffffffff;
+	__u32 cdw13 = args->lpo >> 32;
+	__u32 cdw14 = NVME_SET(args->uuidx, LOG_CDW14_UUID) |
+			NVME_SET(!!args->ot, LOG_CDW14_OT) |
+			NVME_SET(args->csi, LOG_CDW14_CSI);
+
+	if (args->args_size < sizeof(struct nvme_get_log_args)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	sqe = io_uring_get_sqe(ring);
+	if (!sqe)
+		return -1;
+
+	cmd = (void *)&sqe->cmd;
+	cmd->opcode        = nvme_admin_get_log_page,
+	cmd->nsid          = args->nsid,
+	cmd->addr          = (__u64)(uintptr_t)args->log,
+	cmd->data_len      = args->len,
+	cmd->cdw10         = cdw10,
+	cmd->cdw11         = cdw11,
+	cmd->cdw12         = cdw12,
+	cmd->cdw13         = cdw13,
+	cmd->cdw14         = cdw14,
+	cmd->timeout_ms    = args->timeout,
+
+	sqe->fd = args->fd;
+	sqe->opcode = IORING_OP_URING_CMD;
+	sqe->cmd_op = NVME_URING_CMD_ADMIN;
+	sqe->user_data = (__u64)(uintptr_t)args;
+
+	ret = io_uring_submit(ring);
+	if (ret < 0) {
+		errno = -ret;
+		return -1;
+	}
+
+	return 0;
+}
+
+static int nvme_uring_cmd_wait_complete(struct io_uring *ring, int n)
+{
+	struct nvme_get_log_args *args;
+	struct io_uring_cqe *cqe;
+	int i, ret = 0;
+
+	for (i = 0; i < n; i++) {
+		ret = io_uring_wait_cqe(ring, &cqe);
+		if (ret) {
+			errno = -ret;
+			return -1;
+		}
+
+		if (cqe->res) {
+			args = (struct nvme_get_log_args *)cqe->user_data;
+			if (args->result)
+				*args->result = cqe->res;
+			ret = cqe->res;
+			break;
+		}
+
+		io_uring_cqe_seen(ring, cqe);
+	}
+
+	return ret;
+}
+#endif
+
 int nvme_get_log_page(int fd, __u32 xfer_len, struct nvme_get_log_args *args)
 {
 	__u64 offset = 0, xfer, data_len = args->len;
@@ -326,14 +465,36 @@ int nvme_get_log_page(int fd, __u32 xfer_len, struct nvme_get_log_args *args)
 
 	args->fd = fd;
 
+	if (force_4k)
+		xfer_len = NVME_LOG_PAGE_PDU_SIZE;
+
+#ifdef CONFIG_LIBURING
+	int n = 0;
+	struct io_uring ring;
+	struct stat st;
+	bool use_uring = false;
+
+	if (io_uring_kernel_support == IO_URING_AVAILABLE) {
+		if (fstat(fd, &st) == 0 && S_ISCHR(st.st_mode)) {
+			use_uring = true;
+
+			if (nvme_uring_cmd_setup(&ring))
+				return -1;
+		}
+	}
+#endif
 	/*
 	 * 4k is the smallest possible transfer unit, so restricting to 4k
 	 * avoids having to check the MDTS value of the controller.
 	 */
 	do {
-		xfer = data_len - offset;
-		if (xfer > xfer_len)
-			xfer  = xfer_len;
+		if (!force_4k) {
+			xfer = data_len - offset;
+			if (xfer > xfer_len)
+				xfer  = xfer_len;
+		} else {
+			xfer = NVME_LOG_PAGE_PDU_SIZE;
+		}
 
 		/*
 		 * Always retain regardless of the RAE parameter until the very
@@ -344,6 +505,19 @@ int nvme_get_log_page(int fd, __u32 xfer_len, struct nvme_get_log_args *args)
 		args->len = xfer;
 		args->log = ptr;
 		args->rae = offset + xfer < data_len || retain;
+#ifdef CONFIG_LIBURING
+		if (io_uring_kernel_support == IO_URING_AVAILABLE && use_uring) {
+			if (n >= NVME_URING_ENTRIES) {
+				ret = nvme_uring_cmd_wait_complete(&ring, n);
+				n = 0;
+			}
+			n += 1;
+			ret = nvme_uring_cmd_admin_passthru_async(&ring, args);
+
+			if (ret)
+				nvme_uring_cmd_exit(&ring);
+		} else
+#endif
 		ret = nvme_get_log(args);
 		if (ret)
 			return ret;
@@ -352,6 +526,14 @@ int nvme_get_log_page(int fd, __u32 xfer_len, struct nvme_get_log_args *args)
 		ptr += xfer;
 	} while (offset < data_len);
 
+#ifdef CONFIG_LIBURING
+	if (io_uring_kernel_support == IO_URING_AVAILABLE && use_uring) {
+		ret = nvme_uring_cmd_wait_complete(&ring, n);
+		nvme_uring_cmd_exit(&ring);
+		if (ret)
+			return ret;
+	}
+#endif
 	return 0;
 }
 
@@ -364,7 +546,7 @@ static int read_ana_chunk(int fd, enum nvme_log_ana_lsp lsp, bool rae,
 	}
 
 	while (*read < to_read) {
-		__u32 len = min(log_end - *read, NVME_LOG_PAGE_PDU_SIZE);
+		__u32 len = min_t(__u32, log_end - *read, NVME_LOG_PAGE_PDU_SIZE);
 		int ret;
 
 		ret = nvme_get_log_ana(fd, lsp, rae, *read - log, len, *read);
@@ -564,6 +746,19 @@ int nvme_set_features_temp_thresh(int fd, __u16 tmpth, __u8 tmpsel,
 	__u32 value = NVME_SET(tmpth, FEAT_TT_TMPTH) |
 			NVME_SET(tmpsel, FEAT_TT_TMPSEL) |
 			NVME_SET(thsel, FEAT_TT_THSEL);
+
+	return __nvme_set_features(fd, NVME_FEAT_FID_TEMP_THRESH, value, save,
+				   result);
+}
+
+int nvme_set_features_temp_thresh2(int fd, __u16 tmpth, __u8 tmpsel,
+				   enum nvme_feat_tmpthresh_thsel thsel, __u8 tmpthh,
+				   bool save, __u32 *result)
+{
+	__u32 value = NVME_SET(tmpth, FEAT_TT_TMPTH) |
+			NVME_SET(tmpsel, FEAT_TT_TMPSEL) |
+			NVME_SET(thsel, FEAT_TT_THSEL) |
+			NVME_SET(tmpthh, FEAT_TT_TMPTHH);
 
 	return __nvme_set_features(fd, NVME_FEAT_FID_TEMP_THRESH, value, save,
 				   result);
@@ -923,6 +1118,26 @@ int nvme_get_features_temp_thresh(int fd, enum nvme_get_features_sel sel,
 				  __u32 *result)
 {
 	return __nvme_get_features(fd, NVME_FEAT_FID_TEMP_THRESH, sel, result);
+}
+
+int nvme_get_features_temp_thresh2(int fd, enum nvme_get_features_sel sel, __u8 tmpsel,
+				   enum nvme_feat_tmpthresh_thsel thsel, __u32 *result)
+{
+	struct nvme_get_features_args args = {
+		.args_size = sizeof(args),
+		.fd = fd,
+		.fid = NVME_FEAT_FID_TEMP_THRESH,
+		.nsid = NVME_NSID_NONE,
+		.sel = sel,
+		.cdw11 = NVME_SET(tmpsel, FEAT_TT_TMPSEL) | NVME_SET(thsel, FEAT_TT_THSEL),
+		.uuidx = NVME_UUID_NONE,
+		.data_len = 0,
+		.data = NULL,
+		.timeout = NVME_DEFAULT_IOCTL_TIMEOUT,
+		.result = result,
+	};
+
+	return nvme_get_features(&args);
 }
 
 int nvme_get_features_err_recovery(int fd, enum nvme_get_features_sel sel,
@@ -1780,9 +1995,9 @@ static int nvme_set_var_size_tags(__u32 *cmd_dw2, __u32 *cmd_dw3, __u32 *cmd_dw1
 		return -1;
 	}
 
-	*cmd_dw2 = cpu_to_be32(cdw2);
-	*cmd_dw3 = cpu_to_be32(cdw3);
-	*cmd_dw14 = cpu_to_be32(cdw14);
+	*cmd_dw2 = cdw2;
+	*cmd_dw3 = cdw3;
+	*cmd_dw14 = cdw14;
 	return 0;
 }
 
@@ -2167,15 +2382,27 @@ int nvme_dim_send(struct nvme_dim_args *args)
 
 int nvme_lm_cdq(struct nvme_lm_cdq_args *args)
 {
+	const size_t size_v1 = sizeof_args(struct nvme_lm_cdq_args, sz_u8, __u64);
+	const size_t size_v2 = sizeof_args(struct nvme_lm_cdq_args, sz, __u64);
 	__u32 cdw10 = NVME_SET(args->sel, LM_CDQ_SEL) |
 		      NVME_SET(args->mos, LM_CDQ_MOS);
-	__u32 cdw11 = 0, data_len = 0;
+	__u32 cdw11 = 0, data_len = 0, sz = 0;
 	int err;
 
+	if (args->args_size < size_v1 || args->args_size > size_v2) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (args->args_size == size_v1)
+		sz = args->sz_u8;
+	else
+		sz = args->sz;
+
 	if (args->sel == NVME_LM_SEL_CREATE_CDQ) {
-		cdw11 = NVME_SET(args->cntlid, LM_CREATE_CDQ_CNTLID) |
+		cdw11 = NVME_SET(NVME_SET(args->cntlid, LM_CREATE_CDQ_CNTLID), LM_CQS) |
 			NVME_LM_CREATE_CDQ_PC;
-		data_len = args->sz << 2;
+		data_len = sz << 2;
 	} else if (args->sel == NVME_LM_SEL_DELETE_CDQ) {
 		cdw11 = NVME_SET(args->cdqid, LM_DELETE_CDQ_CDQID);
 	}
@@ -2184,7 +2411,7 @@ int nvme_lm_cdq(struct nvme_lm_cdq_args *args)
 		.opcode = nvme_admin_ctrl_data_queue,
 		.cdw10 = cdw10,
 		.cdw11 = cdw11,
-		.cdw12 = args->sz,
+		.cdw12 = sz,
 		.addr = (__u64)(uintptr_t)args->data,
 		.data_len = data_len,
 		.timeout_ms = args->timeout,
@@ -2305,7 +2532,7 @@ int nvme_lm_set_features_ctrl_data_queue(int fd, __u16 cdqid, __u32 hp, __u32 tp
 		.fd		= fd,
 		.fid		= NVME_FEAT_FID_CTRL_DATA_QUEUE,
 		.nsid		= NVME_NSID_NONE,
-		.cdw11		= cdqid | NVME_SET(tpt, LM_CTRL_DATA_QUEUE_ETPT),
+		.cdw11		= cdqid | NVME_SET(etpt, LM_CTRL_DATA_QUEUE_ETPT),
 		.cdw12		= hp,
 		.cdw13		= tpt,
 		.save		= false,

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-#include "mock.h"
-
 #include <errno.h>
 #include <inttypes.h>
 #include <stdarg.h>
@@ -9,7 +7,9 @@
 #include <sys/ioctl.h>
 #include <dlfcn.h>
 
-#include "../../src/nvme/ioctl.h"
+#include <nvme/ioctl.h>
+
+#include "mock.h"
 #include "util.h"
 
 struct mock_cmds {
@@ -118,7 +118,7 @@ void end_mock_cmds(void)
 	} \
 })
 
-#ifdef HAVE_GLIBC_IOCTL
+#if defined(HAVE_GLIBC_IOCTL) && HAVE_GLIBC_IOCTL == 1
 typedef int (*ioctl_func_t)(int, unsigned long, void *);
 int ioctl(int fd, unsigned long request, ...)
 #else
@@ -187,4 +187,10 @@ int ioctl(int fd, int request, ...)
 	}
 
 	return mock_cmd->err;
+}
+
+/* mock io_uring_get_probe, just fail */
+struct io_uring_probe *io_uring_get_probe(void)
+{
+	return 0;
 }

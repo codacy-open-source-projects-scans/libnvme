@@ -30,10 +30,6 @@
 	#include "nvme/types.h"
 	#include "nvme/nbft.h"
 
-	static int host_iter_err = 0;
-	static int subsys_iter_err = 0;
-	static int ctrl_iter_err = 0;
-	static int ns_iter_err = 0;
 	static int connect_err = 0;
 	static int discover_err = 0;
 
@@ -57,65 +53,6 @@
 PyObject *hostnqn_from_file();
 PyObject *hostid_from_file();
 
-%inline %{
-	struct host_iter {
-		struct nvme_root *root;
-		struct nvme_host *pos;
-	};
-
-	struct subsystem_iter {
-		struct nvme_host *host;
-		struct nvme_subsystem *pos;
-	};
-
-	struct ctrl_iter {
-		struct nvme_subsystem *subsystem;
-		struct nvme_ctrl *pos;
-	};
-
-	struct ns_iter {
-		struct nvme_subsystem *subsystem;
-		struct nvme_ctrl *ctrl;
-		struct nvme_ns *pos;
-	};
-%}
-
-%exception host_iter::__next__ {
-	host_iter_err = 0;
-	$action  /* $action sets host_iter_err to non-zero value on failure */
-	if (host_iter_err) {
-		PyErr_SetString(PyExc_StopIteration, "End of list");
-		return NULL;
-	}
-}
-
-%exception subsystem_iter::__next__ {
-	subsys_iter_err = 0;
-	$action  /* $action sets subsys_iter_err to non-zero value on failure */
-	if (subsys_iter_err) {
-		PyErr_SetString(PyExc_StopIteration, "End of list");
-		return NULL;
-	}
-}
-
-%exception ctrl_iter::__next__ {
-	ctrl_iter_err = 0;
-	$action  /* $action sets ctrl_iter_err to non-zero value on failure */
-	if (ctrl_iter_err) {
-		PyErr_SetString(PyExc_StopIteration, "End of list");
-		return NULL;
-	}
-}
-
-%exception ns_iter::__next__ {
-	ns_iter_err = 0;
-	$action  /* $action sets ns_iter_err to non-zero value on failure */
-	if (ns_iter_err) {
-		PyErr_SetString(PyExc_StopIteration, "End of list");
-		return NULL;
-	}
-}
-
 %exception nvme_ctrl::connect {
 	connect_err = 0;
 	errno = 0;
@@ -132,10 +69,28 @@ PyObject *hostid_from_file();
 	}
 }
 
+%exception nvme_ctrl::disconnect {
+	connect_err = 0;
+	errno = 0;
+	$action  /* $action sets connect_err to non-zero value on failure */
+	if (connect_err == 1) {
+		SWIG_exception(SWIG_AttributeError, "No controller connection");
+	} else if (connect_err) {
+		const char *errstr = nvme_errno_to_string(errno);
+		if (errstr) {
+			SWIG_exception(SWIG_RuntimeError, errstr);
+		} else {
+			SWIG_exception(SWIG_RuntimeError, "Disconnect failed");
+		}
+	}
+}
+
 %exception nvme_ctrl::discover {
 	discover_err = 0;
 	$action  /* $action sets discover_err to non-zero value on failure */
-	if (discover_err) {
+	if (discover_err == 1) {
+		SWIG_exception(SWIG_AttributeError, "No controller connection");
+	} else if (discover_err) {
 		SWIG_exception(SWIG_RuntimeError, "Discover failed");
 	}
 }
@@ -307,6 +262,75 @@ PyObject *hostid_from_file();
 		}
 		PyDict_SetItemStringDecRef(entry, "treq", val);
 
+		if (e->trtype ==  NVMF_TRTYPE_TCP) {
+			PyObject *tsas = PyDict_New();
+
+			switch (e->tsas.tcp.sectype) {
+			case NVMF_TCP_SECTYPE_NONE:
+				val = PyUnicode_FromString("none");
+				break;
+			case NVMF_TCP_SECTYPE_TLS:
+				val = PyUnicode_FromString("tls");
+				break;
+			case NVMF_TCP_SECTYPE_TLS13:
+				val = PyUnicode_FromString("tls1.3");
+				break;
+			default:
+				val = PyUnicode_FromString("reserved");
+				break;
+			}
+			PyDict_SetItemStringDecRef(tsas, "sectype", val);
+			PyDict_SetItemStringDecRef(entry, "tsas", tsas);
+		} else if (e->trtype == NVMF_TRTYPE_RDMA) {
+			PyObject *tsas = PyDict_New();
+
+			switch (e->tsas.rdma.qptype) {
+			case NVMF_RDMA_QPTYPE_CONNECTED:
+				val = PyUnicode_FromString("connected");
+				break;
+			case NVMF_RDMA_QPTYPE_DATAGRAM:
+				val = PyUnicode_FromString("datagram");
+				break;
+			default:
+				val = PyUnicode_FromString("reserved");
+				break;
+			}
+			PyDict_SetItemStringDecRef(tsas, "qptype", val);
+
+			switch (e->tsas.rdma.prtype) {
+			case NVMF_RDMA_PRTYPE_NOT_SPECIFIED:
+				val = PyUnicode_FromString("not specified");
+				break;
+			case NVMF_RDMA_PRTYPE_IB:
+				val = PyUnicode_FromString("infiniband");
+				break;
+			case NVMF_RDMA_PRTYPE_ROCE:
+				val = PyUnicode_FromString("roce");
+				break;
+			case NVMF_RDMA_PRTYPE_ROCEV2:
+				val = PyUnicode_FromString("rocev2");
+				break;
+			case NVMF_RDMA_PRTYPE_IWARP:
+				val = PyUnicode_FromString("iwarp");
+				break;
+			default:
+				val = PyUnicode_FromString("reserved");
+				break;
+			}
+			PyDict_SetItemStringDecRef(tsas, "prtype", val);
+
+			switch (e->tsas.rdma.cms) {
+			case NVMF_RDMA_CMS_RDMA_CM:
+				val = PyUnicode_FromString("cm");
+				break;
+			default:
+				val = PyUnicode_FromString("reserved");
+				break;
+			}
+			PyDict_SetItemStringDecRef(tsas, "cms", val);
+			PyDict_SetItemStringDecRef(entry, "tsas", tsas);
+		}
+
 		val = PyLong_FromLong(e->portid);
 		PyDict_SetItemStringDecRef(entry, "portid", val);
 		val = PyLong_FromLong(e->cntlid);
@@ -323,6 +347,17 @@ PyObject *hostid_from_file();
 #include "tree.h"
 #include "fabrics.h"
 #define STR_OR_NONE(str) (!(str) ? "None" : str)
+
+struct nvme_host * nvme_first_host(struct nvme_root * r);
+struct nvme_host * nvme_next_host(struct nvme_root * r, struct nvme_host * h);
+struct nvme_subsystem * nvme_first_subsystem(struct nvme_host * h);
+struct nvme_subsystem * nvme_next_subsystem(struct nvme_host * h, struct nvme_subsystem * s);
+struct nvme_ctrl * nvme_subsystem_first_ctrl(struct nvme_subsystem * s);
+struct nvme_ctrl * nvme_subsystem_next_ctrl(struct nvme_subsystem * s, struct nvme_ctrl * c);
+struct nvme_ns * nvme_subsystem_first_ns(struct nvme_subsystem * s);
+struct nvme_ns * nvme_subsystem_next_ns(struct nvme_subsystem * s, struct nvme_ns * n);
+struct nvme_ns * nvme_ctrl_first_ns(struct nvme_ctrl * c);
+struct nvme_ns * nvme_ctrl_next_ns(struct nvme_ctrl * c, struct nvme_ns * n);
 
 struct nvme_root {
 	%immutable config_file;
@@ -344,19 +379,30 @@ struct nvme_host {
 };
 
 struct nvme_subsystem {
+	%immutable sysfs_dir;
 	%immutable subsysnqn;
 	%immutable model;
 	%immutable serial;
 	%immutable firmware;
-	%immutable application;
+	%immutable subsystype;
+	%immutable iopolicy;
 	char *subsysnqn;
 	char *model;
 	char *serial;
 	char *firmware;
-	char *application;
+	char *subsystype;
+
+	%extend {
+		const char *sysfs_dir;
+		const char *application;
+		const char *iopolicy;
+	}
 };
 
 struct nvme_ctrl {
+	%immutable name;
+	%immutable subsystem;
+	%immutable state;
 	%immutable sysfs_dir;
 	%immutable address;
 	%immutable firmware;
@@ -369,34 +415,67 @@ struct nvme_ctrl {
 	%immutable subsysnqn;
 	%immutable traddr;
 	%immutable trsvcid;
-	%immutable dhchap_host_key;
-	%immutable dhchap_key;
 	%immutable cntrltype;
+	%immutable cntlid;
 	%immutable dctype;
-	%immutable discovery_ctrl;
+	%immutable phy_slot;
 	%immutable discovered;
-	%immutable persistent;
-	char *sysfs_dir;
-	char *address;
-	char *firmware;
-	char *model;
-	char *numa_node;
-	char *queue_count;
-	char *serial;
-	char *sqsize;
-	char *transport;
-	char *subsysnqn;
-	char *traddr;
-	char *trsvcid;
+
+	const char *cntrltype;  // Do not put in %extend because there's no getter method in libnvme.map
+	const char *dctype;     // Do not put in %extend because there's no getter method in libnvme.map
+	const bool discovered;  // Do not put in %extend because there's no getter method in libnvme.map
+
 	%extend {
-		char *dhchap_host_key:
-		char *dhchap_key;
+		/**
+		 * By putting these attributes in an %extend block, we're
+		 * forcing SWIG to invoke getter/setter methods instead of
+		 * accessing the members directly.
+		 *
+		 * For example, SWIG will generate code like this:
+		 *    name = nvme_ctrl_name_get(ctrl)
+		 *
+		 * instead of that:
+		 *    name = ctrl->name
+		 */
+		const char *name;
+		const char *state;
+		const char *sysfs_dir;
+		const char *address;
+		const char *firmware;
+		const char *model;
+		const char *numa_node;
+		const char *queue_count;
+		const char *serial;
+		const char *sqsize;
+		const char *transport;
+		const char *subsysnqn;
+		const char *traddr;
+		const char *trsvcid;
+		const char *cntlid;
+		const char *phy_slot;
+
+		bool unique_discovery_ctrl;
+		bool discovery_ctrl;
+		bool persistent;
+
+		char *keyring;
+		char *tls_key_identity;
+		char *tls_key;
+
+		/**
+		 * We are remapping the following members of the C code's
+		 * nvme_ctrl_t to different names in Python. Here's the mapping:
+		 *
+		 * C code                 Python (SWIG)
+		 * =====================  =====================
+		 * ctrl->s                ctrl->subsystem
+		 * ctrl->dhchap_key       ctrl->dhchap_host_key
+		 * ctrl->dhchap_ctrl_key  ctrl->dhchap_key
+		 */
+		struct nvme_subsystem *subsystem; // Maps to "s" in the C code
+		char *dhchap_host_key;            // Maps to "dhchap_key" in the C code
+		char *dhchap_key;                 // Maps to "dhchap_ctrl_key" in the C code
 	}
-	char *cntrltype;
-	char *dctype;
-	bool discovery_ctrl;
-	bool discovered;
-	bool persistent;
 };
 
 struct nvme_ns {
@@ -417,6 +496,12 @@ struct nvme_ns {
 	~nvme_root() {
 		nvme_free_tree($self);
 	}
+	struct nvme_root* __enter__() {
+		return $self;
+	}
+	struct nvme_root* __exit__(PyObject *type, PyObject *value, PyObject *traceback) {
+		return $self;
+	}
 	void log_level(const char *level) {
 		int log_level = DEFAULT_LOGLEVEL;
 		if (!strcmp(level, "debug")) log_level = LOG_DEBUG;
@@ -429,9 +514,14 @@ struct nvme_ns {
 		else if (!strcmp(level, "emerg")) log_level = LOG_EMERG;
 		nvme_init_logging($self, log_level, false, false);
 	}
-	struct nvme_host *hosts() {
-		return nvme_first_host($self);
-	}
+	%pythoncode %{
+	def hosts(self):
+	    """Iterator over all host objects"""
+	    h = nvme_first_host(self)
+	    while h:
+	        yield h
+	        h = nvme_next_host(self, h)
+	%}
 	void refresh_topology() {
 		nvme_refresh_topology($self);
 	}
@@ -443,21 +533,6 @@ struct nvme_ns {
 	}
 }
 
-%extend host_iter {
-	struct host_iter *__iter__() {
-		return $self;
-	}
-	struct nvme_host *__next__() {
-		struct nvme_host *this = $self->pos;
-
-		if (!this) {
-			host_iter_err = 1;
-			return NULL;
-		}
-		$self->pos = nvme_next_host($self->root, this);
-		return this;
-	}
-}
 
 %define SET_SYMNAME_DOCSTRING
 "@brief Set or Clear Host's Symbolic Name
@@ -490,6 +565,12 @@ struct nvme_ns {
 	~nvme_host() {
 		nvme_free_host($self);
 	}
+	struct nvme_host* __enter__() {
+		return $self;
+	}
+	struct nvme_host* __exit__(PyObject *type, PyObject *value, PyObject *traceback) {
+		return $self;
+	}
 	%feature("autodoc", SET_SYMNAME_DOCSTRING) set_symname;
 	void set_symname(const char *hostsymname) {
 		nvme_host_set_hostsymname($self, hostsymname);
@@ -498,16 +579,14 @@ struct nvme_ns {
 	PyObject* __str__() {
 		return PyUnicode_FromFormat("nvme.host(%s,%s)", STR_OR_NONE($self->hostnqn), STR_OR_NONE($self->hostid));
 	}
-	struct host_iter __iter__() {
-		struct host_iter ret = {
-			.root = nvme_host_get_root($self),
-			.pos = $self
-		};
-		return ret;
-	}
-	struct nvme_subsystem* subsystems() {
-		return nvme_first_subsystem($self);
-	}
+	%pythoncode %{
+	def subsystems(self):
+	    """Iterator over all subsystem objects"""
+	    s = nvme_first_subsystem(self)
+	    while s:
+	        yield s
+	        s = nvme_next_subsystem(self, s)
+	%}
 }
 
 %{
@@ -518,41 +597,6 @@ struct nvme_ns {
 		nvme_host_set_dhchap_key(h, key);
 	}
 %};
-
-%extend subsystem_iter {
-	struct subsystem_iter *__iter__() {
-		return $self;
-	}
-	struct nvme_subsystem *__next__() {
-		struct nvme_subsystem *this = $self->pos;
-
-		if (!this) {
-			subsys_iter_err = 1;
-			return NULL;
-		}
-		$self->pos = nvme_next_subsystem($self->host, this);
-		return this;
-	}
-}
-
-%extend ns_iter {
-	struct ns_iter *__iter__() {
-		return $self;
-	}
-	struct nvme_ns *__next__() {
-		struct nvme_ns *this = $self->pos;
-
-		if (!this) {
-			ns_iter_err = 1;
-			return NULL;
-		}
-		if ($self->ctrl)
-			$self->pos = nvme_ctrl_next_ns($self->ctrl, this);
-		else
-			$self->pos = nvme_subsystem_next_ns($self->subsystem, this);
-		return this;
-	}
-}
 
 %pythonappend nvme_subsystem::nvme_subsystem(struct nvme_host *host,
 					     const char *subsysnqn,
@@ -567,22 +611,31 @@ struct nvme_ns {
 	~nvme_subsystem() {
 		nvme_free_subsystem($self);
 	}
+	struct nvme_subsystem* __enter__() {
+		return $self;
+	}
+	struct nvme_subsystem* __exit__(PyObject *type, PyObject *value, PyObject *traceback) {
+		return $self;
+	}
 	PyObject *__str__() {
 		return PyUnicode_FromFormat("nvme.subsystem(%s,%s)", STR_OR_NONE($self->name), STR_OR_NONE($self->subsysnqn));
 	}
-	struct subsystem_iter __iter__() {
-		struct subsystem_iter ret = {
-			.host = nvme_subsystem_get_host($self),
-			.pos = $self
-		};
-		return ret;
-	}
-	struct nvme_ctrl *controllers() {
-		return nvme_subsystem_first_ctrl($self);
-	}
-	struct nvme_ns *namespaces() {
-		return nvme_subsystem_first_ns($self);
-	}
+	%pythoncode %{
+	def controllers(self):
+	    """Iterator over all controller objects"""
+	    c = nvme_subsystem_first_ctrl(self)
+	    while c:
+	        yield c
+	        c = nvme_subsystem_next_ctrl(self, c)
+	%}
+	%pythoncode %{
+	def namespaces(self):
+	    """Iterator over all namespace objects"""
+	    ns = nvme_subsystem_first_ns(self)
+	    while ns:
+	        yield ns
+	        ns = nvme_subsystem_next_ns(self, ns)
+	%}
 	%immutable name;
 	const char *name;
 	%immutable host;
@@ -596,23 +649,19 @@ struct nvme_ns {
 	struct nvme_host *nvme_subsystem_host_get(struct nvme_subsystem *s) {
 		return nvme_subsystem_get_host(s);
 	}
+	const char *nvme_subsystem_sysfs_dir_get(struct nvme_subsystem *s) {
+		return nvme_subsystem_get_sysfs_dir(s);
+	}
+	const char *nvme_subsystem_iopolicy_get(struct nvme_subsystem *s) {
+		return nvme_subsystem_get_iopolicy(s);
+	}
+	const char *nvme_subsystem_application_get(struct nvme_subsystem *s) {
+		return nvme_subsystem_get_application(s);
+	}
+	void nvme_subsystem_application_set(struct nvme_subsystem *s, const char *a) {
+		nvme_subsystem_set_application(s, a);
+	}
 %};
-
-%extend ctrl_iter {
-	struct ctrl_iter *__iter__() {
-		return $self;
-	}
-	struct nvme_ctrl *__next__() {
-		struct nvme_ctrl *this = $self->pos;
-
-		if (!this) {
-			ctrl_iter_err = 1;
-			return NULL;
-		}
-		$self->pos = nvme_subsystem_next_ctrl($self->subsystem, this);
-		return this;
-	}
-}
 
 %pythonappend nvme_ctrl::connect(struct nvme_host *h,
 				 struct nvme_fabrics_config *cfg) {
@@ -633,10 +682,22 @@ struct nvme_ns {
 	~nvme_ctrl() {
 		nvme_free_ctrl($self);
 	}
-
-	void discovery_ctrl_set(bool discovery) {
-		nvme_ctrl_set_discovery_ctrl($self, discovery);
+	struct nvme_ctrl* __enter__() {
+		return $self;
 	}
+	struct nvme_ctrl* __exit__(PyObject *type, PyObject *value, PyObject *traceback) {
+		if (nvme_ctrl_get_name($self))
+			nvme_disconnect_ctrl($self);
+		return $self;
+	}
+
+	%pythoncode %{
+	def discovery_ctrl_set(self, discovery: bool):
+	    r"""DEPRECATED METHOD: Use property setter instead (e.g. ctrl.discovery_ctrl = True)"""
+	    import warnings
+	    warnings.warn("Use property setter instead (e.g. ctrl_obj.discovery_ctrl = True)", DeprecationWarning, stacklevel=2)
+	    return _nvme.ctrl_discovery_ctrl_set(self, discovery)
+	%}
 
 	bool init(struct nvme_host *h, int instance) {
 		return nvme_init_ctrl(h, $self, instance) == 0;
@@ -665,16 +726,30 @@ struct nvme_ns {
 	bool connected() {
 		return nvme_ctrl_get_name($self) != NULL;
 	}
-	void persistent_set(bool persistent) {
-		nvme_ctrl_set_persistent($self, persistent);
-	}
+	%pythoncode %{
+	def persistent_set(self, persistent: bool):
+	    r"""DEPRECATED METHOD: Use property setter instead (e.g. ctrl.persistent = True)"""
+	    import warnings
+	    warnings.warn("Use property setter instead (e.g. ctrl_obj.persistent = True)", DeprecationWarning, stacklevel=2)
+	    return _nvme.ctrl_persistent_set(self, persistent)
+	%}
 	void rescan() {
 		nvme_rescan_ctrl($self);
 	}
 	void disconnect() {
+		int ret;
+		const char *dev;
+
+		dev = nvme_ctrl_get_name($self);
+		if (!dev) {
+			connect_err = 1;
+			return;
+		}
 		Py_BEGIN_ALLOW_THREADS  /* Release Python GIL */
-		    nvme_disconnect_ctrl($self);
+		ret = nvme_disconnect_ctrl($self);
 		Py_END_ALLOW_THREADS    /* Reacquire Python GIL */
+		if (ret < 0)
+			connect_err = 2;
 	}
 
 	%feature("autodoc", "@return: True if controller supports explicit registration. False otherwise.") is_registration_supported;
@@ -704,6 +779,7 @@ struct nvme_ns {
 
 	%newobject discover;
 	struct nvmf_discovery_log *discover(int lsp = 0, int max_retries = 6) {
+		const char *dev;
 		struct nvmf_discovery_log *logp;
 		struct nvme_get_discovery_args args = {
 			.c = $self,
@@ -714,11 +790,16 @@ struct nvme_ns {
 			.lsp = lsp,
 		};
 
+		dev = nvme_ctrl_get_name($self);
+		if (!dev) {
+			discover_err = 1;
+			return NULL;
+		}
 		Py_BEGIN_ALLOW_THREADS  /* Release Python GIL */
 		    logp = nvmf_get_discovery_wargs(&args);
 		Py_END_ALLOW_THREADS    /* Reacquire Python GIL */
 
-		if (logp == NULL) discover_err = 1;
+		if (logp == NULL) discover_err = 2;
 		return logp;
 	}
 
@@ -750,25 +831,31 @@ struct nvme_ns {
 		       PyUnicode_FromFormat("nvme_ctrl(transport=%s,%s)", STR_OR_NONE($self->transport), STR_OR_NONE($self->address)) :
 		       PyUnicode_FromFormat("nvme_ctrl(transport=%s)", STR_OR_NONE($self->transport));
 	}
-	struct ctrl_iter __iter__() {
-		struct ctrl_iter ret = {
-			.subsystem = nvme_ctrl_get_subsystem($self),
-			.pos = $self
-		};
-		return ret;
-	}
-	struct nvme_ns* namespaces() {
-		return nvme_ctrl_first_ns($self);
-	}
-	%immutable name;
-	const char *name;
-	%immutable subsystem;
-	struct nvme_subsystem *subsystem;
-	%immutable state;
-	const char *state;
+
+	%pythoncode %{
+	def namespaces(self):
+	    """Iterator over all namespace objects"""
+	    ns = nvme_ctrl_first_ns(self)
+	    while ns:
+	        yield ns
+	        ns = nvme_ctrl_next_ns(self, ns)
+	%}
 }
 
 %{
+	/**********************************************************************
+	 * SWIG automatically generates getter and setter methods using
+	 * the syntax: [class]_[member]_[get|set]. These need to be mapped
+	 * to the matching methods in libnvme (i.e. those that are defined
+	 * publicly in libnvme.map). Typically, we get the following mapping:
+	 *
+	 * SWIG                       libnvme.map
+	 * ======================     =======================
+	 * nvme_ctrl_[member]_get  -> nvme_ctrl_get_[member]
+	 * nvme_ctrl_[member]_set  -> nvme_ctrl_set_[member]
+	 *
+	 */
+
 	const char *nvme_ctrl_name_get(struct nvme_ctrl *c) {
 		return nvme_ctrl_get_name(c);
 	}
@@ -787,7 +874,108 @@ struct nvme_ns {
 	const char *nvme_ctrl_dhchap_host_key_get(struct nvme_ctrl *c) {
 		return nvme_ctrl_get_dhchap_host_key(c);
 	}
-%};
+	void nvme_ctrl_dhchap_host_key_set(struct nvme_ctrl *c, const char *key) {
+		nvme_ctrl_set_dhchap_host_key(c, key);
+	}
+
+	const char *nvme_ctrl_cntlid_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_cntlid(c);
+	}
+
+	bool nvme_ctrl_persistent_get(struct nvme_ctrl *c) {
+		return nvme_ctrl_is_persistent(c);
+	}
+	void nvme_ctrl_persistent_set(struct nvme_ctrl *c, bool persistent) {
+		nvme_ctrl_set_persistent(c, persistent);
+	}
+
+	const char *nvme_ctrl_phy_slot_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_phy_slot(c);
+	}
+
+	const char *nvme_ctrl_trsvcid_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_trsvcid(c);
+	}
+
+	const char *nvme_ctrl_traddr_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_traddr(c);
+	}
+
+	const char *nvme_ctrl_subsysnqn_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_subsysnqn(c);
+	}
+
+	const char *nvme_ctrl_transport_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_transport(c);
+	}
+
+	const char *nvme_ctrl_sqsize_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_sqsize(c);
+	}
+
+	const char *nvme_ctrl_serial_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_serial(c);
+	}
+
+	const char *nvme_ctrl_queue_count_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_queue_count(c);
+	}
+
+	const char *nvme_ctrl_numa_node_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_numa_node(c);
+	}
+
+	const char *nvme_ctrl_model_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_model(c);
+	}
+
+	const char *nvme_ctrl_firmware_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_firmware(c);
+	}
+
+	const char *nvme_ctrl_address_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_address(c);
+	}
+
+	const char *nvme_ctrl_sysfs_dir_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_sysfs_dir(c);
+	}
+
+	bool nvme_ctrl_discovery_ctrl_get(struct nvme_ctrl *c) {
+		return nvme_ctrl_is_discovery_ctrl(c);
+	}
+	void nvme_ctrl_discovery_ctrl_set(struct nvme_ctrl *c, bool discovery) {
+		nvme_ctrl_set_discovery_ctrl(c, discovery);
+	}
+
+	bool nvme_ctrl_unique_discovery_ctrl_get(nvme_ctrl_t c) {
+		return nvme_ctrl_is_unique_discovery_ctrl(c);
+	}
+	void nvme_ctrl_unique_discovery_ctrl_set(nvme_ctrl_t c, bool unique) {
+		nvme_ctrl_set_unique_discovery_ctrl(c, unique);
+	}
+
+	const char *nvme_ctrl_keyring_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_keyring(c);
+	}
+	void nvme_ctrl_keyring_set(nvme_ctrl_t c, const char *keyring) {
+		nvme_ctrl_set_keyring(c, keyring);
+	}
+
+	const char *nvme_ctrl_tls_key_identity_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_tls_key_identity(c);
+	}
+	void nvme_ctrl_tls_key_identity_set(nvme_ctrl_t c, const char *identity) {
+		nvme_ctrl_set_tls_key_identity(c, identity);
+	}
+
+	const char *nvme_ctrl_tls_key_get(nvme_ctrl_t c) {
+		return nvme_ctrl_get_tls_key(c);
+	}
+	void nvme_ctrl_tls_key_set(nvme_ctrl_t c, const char *key) {
+		nvme_ctrl_set_tls_key(c, key);
+	}
+%}
 
 %pythonappend nvme_ns::nvme_ns(struct nvme_subsystem *s,
 			       unsigned int nsid) {
@@ -800,14 +988,14 @@ struct nvme_ns {
 	~nvme_ns() {
 		nvme_free_ns($self);
 	}
+	struct nvme_ns* __enter__() {
+		return $self;
+	}
+	struct nvme_ns* __exit__(PyObject *type, PyObject *value, PyObject *traceback) {
+		return $self;
+	}
 	PyObject *__str__() {
 		return PyUnicode_FromFormat("nvme.ns(%u)", $self->nsid);
-	}
-	struct ns_iter __iter__() {
-		struct ns_iter ret = { .ctrl = nvme_ns_get_ctrl($self),
-			.subsystem = nvme_ns_get_subsystem($self),
-			.pos = $self };
-		return ret;
 	}
 	%immutable name;
 	const char *name;

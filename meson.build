@@ -7,8 +7,8 @@
 #
 project(
     'libnvme', ['c'],
-    meson_version: '>= 0.50.0',
-    version: '1.11.1',
+    meson_version: '>= 0.62.0',
+    version: '1.16',
     license: 'LGPL-2.1-or-later',
     default_options: [
         'c_std=gnu99',
@@ -21,6 +21,7 @@ project(
 )
 
 vstr = meson.project_version().split('-rc')[0]
+vstr = vstr.split('.dev')[0]
 vid = vstr.split('.')
 library_version = '.'.join([vid[0], vid[1]])
 if vid.length() == 3
@@ -31,7 +32,7 @@ endif
 
 ################################################################################
 cc = meson.get_compiler('c')
-cxx_available = add_languages('cpp', required: false)
+cxx_available = add_languages('cpp', required: false, native: false)
 
 prefixdir  = get_option('prefix')
 libdir     = join_paths(prefixdir, get_option('libdir'))
@@ -68,40 +69,34 @@ else
 endif
 conf.set('CONFIG_JSONC', json_c_dep.found(), description: 'Is json-c required?')
 
+if get_option('liburing').disabled()
+    liburing_dep = dependency('', required: false)
+else
+    liburing_dep = dependency('liburing', version: '>=2.2', required: get_option('liburing'))
+endif
+conf.set('CONFIG_LIBURING', liburing_dep.found(), description: 'Is liburing available?')
+
 if get_option('openssl').disabled()
   openssl_dep = dependency('', required: false)
 else
   openssl_dep = dependency('openssl',
-                           version: '>=1.1.0',
+                           version: '>=3.0.0',
                            required: get_option('openssl'),
                            fallback : ['openssl', 'libssl_dep'])
-
-  if openssl_dep.found()
-    if openssl_dep.version().version_compare('<2.0.0')
-      api_version = 1
+endif
+if openssl_dep.found()
+  # Test for LibreSSL v3.x with incomplete OpenSSL v3 APIs
+  if openssl_dep.type_name() != 'internal'
+    is_libressl = cc.has_header_symbol('openssl/opensslv.h',
+                                       'LIBRESSL_VERSION_NUMBER',
+                                       dependencies: openssl_dep)
+    has_header = cc.has_header('openssl/core_names.h',
+                               dependencies: openssl_dep)
+    if is_libressl and not has_header
+      openssl_dep = dependency('', required: false)
     endif
-
-    if openssl_dep.version().version_compare('>=3.0.0')
-      api_version = 3
-    endif
-
-    # Test for LibreSSL v3.x with incomplete OpenSSL v3 APIs
-    if openssl_dep.type_name() != 'internal'
-      is_libressl = cc.has_header_symbol('openssl/opensslv.h',
-                                         'LIBRESSL_VERSION_NUMBER',
-                                         dependencies: openssl_dep)
-      has_header = cc.has_header('openssl/core_names.h',
-                                 dependencies: openssl_dep)
-      if is_libressl and not has_header
-        api_version = 1
-      endif
-    endif
-
-    conf.set('CONFIG_OPENSSL_@0@'.format(api_version), true,
-             description: 'OpenSSL/LibreSSL API version @0@'.format(api_version))
   endif
 endif
-
 conf.set('CONFIG_OPENSSL', openssl_dep.found(),
          description: 'Is OpenSSL/LibreSSL available?')
 
@@ -221,9 +216,10 @@ conf.set10(
     description: 'Is linux/mctp.h include-able?'
 )
 
-conf.set(
-    'HAVE_NETDB',
-    cc.links(
+is_static = get_option('default_library') == 'static'
+have_netdb = false
+if not is_static
+  have_netdb = cc.links(
       '''#include <sys/types.h>
          #include <sys/socket.h>
          #include <netdb.h>
@@ -233,19 +229,16 @@ conf.set(
       }
       ''',
       name: 'netdb',
-    ),
+    )
+endif
+
+conf.set(
+    'HAVE_NETDB',
+    have_netdb,
     description: 'Is network address and service translation available'
 )
-conf.set(
-    'HAVE_GLIBC_IOCTL',
-    cc.compiles(
-        '''#include <sys/ioctl.h>
-        int ioctl(int fd, unsigned long request, ...);
-        ''',
-        name: 'ioctl has glibc-style prototype'
-    ),
-    description: 'Is ioctl the glibc interface (rather than POSIX)'
-)
+
+threads_dep = dependency('threads', required: true)
 dl_dep = dependency('dl', required: false)
 conf.set(
     'HAVE_LIBC_DLSYM',
@@ -257,6 +250,22 @@ if cc.has_function_attribute('fallthrough')
   conf.set('fallthrough', '__attribute__((__fallthrough__))')
 else
   conf.set('fallthrough', 'do {} while (0) /* fallthrough */')
+endif
+
+if openssl_dep.found()
+  if openssl_dep.type_name() != 'internal'
+    # Check for a bug in the EVP_PKEY_CTX_add1_hkdf_info implementation
+    res = cc.run(
+        files('test/hkdf_add1.c'),
+        dependencies: [openssl_dep],
+        name: 'check hkdf_add1'
+    )
+    if res.returncode() == 1
+      warning('EVP_PKEY_CTX_add1_hkdf_info bahaves incorrectly')
+    else
+      message('EVP_PKEY_CTX_add1_hkdf_info behaves sanely')
+    endif
+  endif
 endif
 
 ################################################################################
@@ -289,7 +298,9 @@ subdir('libnvme')
 if get_option('tests')
     subdir('test')
 endif
-subdir('examples')
+if get_option('examples')
+    subdir('examples')
+endif
 subdir('doc')
 
 ################################################################################
@@ -311,6 +322,7 @@ if meson.version().version_compare('>=0.53.0')
         'keyutitls':         keyutils_dep.found(),
         'libdbus':           libdbus_dep.found(),
         'Python 3':          py3_dep.found(),
+        'liburing':          liburing_dep.found(),
     }
     summary(dep_dict, section: 'Dependencies')
     conf_dict = {

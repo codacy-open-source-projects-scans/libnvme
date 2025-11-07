@@ -193,6 +193,9 @@ The mask value shifted
   Max number of zones in the changed zones log
   page
 
+``NVME_STREAM_ID_MAX``
+  Max number of stream IDs
+
 
 
 
@@ -210,6 +213,12 @@ The mask value shifted
 
 ``NVME_CSI_ZNS``
   Zoned Namespace Command Set
+
+``NVME_CSI_SLM``
+  Subsystem Local Memory Command Set
+
+``NVME_CSI_CP``
+  Computational Programs Command Set
 
 
 
@@ -1416,7 +1425,12 @@ power scale value
     __u8 rsvd19;
     __le16 actp;
     __u8 apws;
-    __u8 rsvd23[9];
+    __u8 epfrt;
+    __u8 fqvt;
+    __u8 epfvt;
+    __u8 epfr_fqv_ts;
+    __u8 epfvts;
+    __u8 rsvd28[4];
   };
 
 **Members**
@@ -1487,7 +1501,23 @@ power scale value
   used to calculate maximum power for this power state.
   See :c:type:`enum nvme_psd_workload <nvme_psd_workload>` for decoding this field.
 
-``rsvd23``
+``epfrt``
+  Emergency power fail recovery time
+
+``fqvt``
+  Forced quiescence vault time
+
+``epfvt``
+  Emergency power fail vault time
+
+``epfr_fqv_ts``
+  Bits 7-4: Forced quiescence vault time scale
+  Bits 3-0: Emergency power fail recovery time scale
+
+``epfvts``
+  Bits 3-0: Emergency power fail vault time scale
+
+``rsvd28``
   Reserved
 
 
@@ -1519,13 +1549,18 @@ power scale value
     __le32 oaes;
     __le32 ctratt;
     __le16 rrls;
-    __u8 rsvd102[9];
+    __u8 bpcap;
+    __u8 rsvd103;
+    __le32 nssl;
+    __u8 rsvd108[2];
+    __u8 plsi;
     __u8 cntrltype;
     __u8 fguid[16];
     __le16 crdt1;
     __le16 crdt2;
     __le16 crdt3;
-    __u8 rsvd134[119];
+    __u8 crcap;
+    __u8 rsvd135[118];
     __u8 nvmsr;
     __u8 vwci;
     __u8 mec;
@@ -1564,10 +1599,15 @@ power scale value
     __le32 nanagrpid;
     __le32 pels;
     __le16 domainid;
-    __u8 rsvd358[10];
+    __u8 kpioc;
+    __u8 rsvd359;
+    __le16 mptfawr;
+    __u8 rsvd362[6];
     __u8 megcap[16];
     __u8 tmpthha;
-    __u8 rsvd385[127];
+    __u8 rsvd385;
+    __le16 cqt;
+    __u8 rsvd388[124];
     __u8 sqes;
     __u8 cqes;
     __le16 maxcmd;
@@ -1587,18 +1627,19 @@ power scale value
     __u8 maxdna[16];
     __le32 maxcna;
     __le32 oaqd;
-    __u8 rsvd568[2];
-    __u16 cmmrtd;
-    __u16 nmmrtd;
+    __u8 rhiri;
+    __u8 hirt;
+    __le16 cmmrtd;
+    __le16 nmmrtd;
     __u8 minmrtg;
     __u8 maxmrtg;
     __u8 trattr;
     __u8 rsvd577;
-    __u16 mcudmq;
-    __u16 mnsudmq;
-    __u16 mcmr;
-    __u16 nmcmr;
-    __u16 mcdqpc;
+    __le16 mcudmq;
+    __le16 mnsudmq;
+    __le16 mcmr;
+    __le16 nmcmr;
+    __le16 mcdqpc;
     __u8 rsvd588[180];
     char subnqn[NVME_NQN_LENGTH];
     __u8 rsvd1024[768];
@@ -1677,8 +1718,22 @@ power scale value
   Read Recovery Level is supported. If a bit is cleared, then the
   corresponding Read Recovery Level is not supported.
 
-``rsvd102``
+``bpcap``
+  Boot Partition Capabilities, see :c:type:`enum nvme_id_ctrl_bpcap <nvme_id_ctrl_bpcap>`.
+
+``rsvd103``
   Reserved
+
+``nssl``
+  NVM Subsystem Shutdown Latency (NSSL). This field indicates the
+  typical latency in microseconds for an NVM Subsystem Shutdown to
+  complete.
+
+``rsvd108``
+  Reserved
+
+``plsi``
+  Power Loss Signaling Information (PLSI), see :c:type:`enum nvme_id_ctrl_plsi <nvme_id_ctrl_plsi>`
 
 ``cntrltype``
   Controller Type, see :c:type:`enum nvme_id_ctrl_cntrltype <nvme_id_ctrl_cntrltype>`
@@ -1699,7 +1754,11 @@ power scale value
   Controller Retry Delay time in 100 millisecond units if CQE CRD
   field is 3
 
-``rsvd134``
+``crcap``
+  Controller Reachability Capabilities (CRCAP), see
+  :c:type:`enum nvme_id_ctrl_crcap <nvme_id_ctrl_crcap>`
+
+``rsvd135``
   Reserved
 
 ``nvmsr``
@@ -1879,7 +1938,20 @@ power scale value
   Domain Identifier indicates the identifier of the domain
   that contains this controller.
 
-``rsvd358``
+``kpioc``
+  Key Per I/O Capabilities (KPIOC), see :c:type:`enum nvme_id_ctrl_kpioc <nvme_id_ctrl_kpioc>`
+
+``rsvd359``
+  Reserved
+
+``mptfawr``
+  Maximum Processing Time for Firmware Activation Without Reset
+  (MPTFAWR). This field shall indicate the estimated maximum time
+  in 100 ms units required by the controller to process a Firmware
+  Commit command that specifies a value of 011b in the Commit
+  Action field
+
+``rsvd362``
   Reserved
 
 ``megcap``
@@ -1890,6 +1962,15 @@ power scale value
   Temperature Threshold Hysteresis Attributes
 
 ``rsvd385``
+  Reserved
+
+``cqt``
+  Command Quiesce Time (CQT). his field indicates the expected
+  worst-case time in 1 millisecond units for the controller to
+  quiesce all outstanding commands after a Keep Alive Timeout or
+  other communication loss.
+
+``rsvd388``
   Reserved
 
 ``sqes``
@@ -1976,8 +2057,20 @@ power scale value
   total number of outstanding I/O commands across all I/O queues
   on the controller for optimal operation.
 
-``rsvd568``
-  Reserved
+``rhiri``
+  Recommended Host-Initiated Refresh Interval (RHIRI). If the
+  Host-Initiated Refresh capability is supported, then this field
+  indicates the recommended time interval in days from last power
+  down to the time at which the host should initiate the
+  Host-Initiated Refresh operation. If this field is cleared to
+  0h, then this field is not reported.
+
+``hirt``
+  Host-Initiated Refresh Time (HIRT). If the Host-Initiated
+  Refresh capability is supported, then this field indicates the
+  nominal amount of time in minutes that the controller takes to
+  complete the Host-Initiated Refresh operation. If this field is
+  cleared to 0h, then this field is not reported.
 
 ``cmmrtd``
   Controller Maximum Memory Range Tracking Descriptors indicates
@@ -2002,8 +2095,8 @@ power scale value
   structure.
 
 ``trattr``
-  Tracking Attributes indicates supported attributes for the
-  Track Send command and Track Receive command.
+  Tracking Attributes indicates supported attributes for the Track Send
+  command and Track Receive command. see :c:type:`enum nvme_id_ctrl_trattr <nvme_id_ctrl_trattr>`
 
 ``rsvd577``
   Reserved
@@ -2354,6 +2447,97 @@ power scale value
 
 
 
+.. c:type:: enum nvme_id_ctrl_bpcap
+
+   Boot Partition Capabilities
+
+**Constants**
+
+``NVME_CTRL_BACAP_RPMBBPWPS_SHIFT``
+  Shift amount to get the RPMB Boot Partition Write
+  Protection Support from the :c:type:`struct
+  nvme_id_ctrl <nvme_id_ctrl>`.bpcap field.
+
+``NVME_CTRL_BACAP_SFBPWPS_SHIFT``
+  Shift amount to get the Set Features Boot Partition
+  Write Protection Support from the :c:type:`struct
+  nvme_id_ctrl <nvme_id_ctrl>`.bpcap field.
+
+``NVME_CTRL_BACAP_RPMBBPWPS_MASK``
+  Mask to get the RPMB Boot Partition Write
+  Protection Support from the :c:type:`struct
+  nvme_id_ctrl <nvme_id_ctrl>`.bpcap field.
+
+``NVME_CTRL_BACAP_SFBPWPS_MASK``
+  Mask to get the Set Features Boot Partition Write
+  Protection Support from the :c:type:`struct
+  nvme_id_ctrl <nvme_id_ctrl>`.bpcap field.
+
+``NVME_CTRL_BACAP_RPMBBPWPS_NOT_SPECIFIED``
+  Support for RPMB Boot Partition Write Protection
+  is not specified.
+
+``NVME_CTRL_BACAP_RPMBBPWPS_NOT_SUPPORTED``
+  RPMB Boot Partition Write Protection is not
+  supported by this controller.
+
+``NVME_CTRL_BACAP_RPMBBPWPS_SUPPORTED``
+  RPMB Boot Partition Write Protection is supported
+  by this controller.
+
+
+
+
+.. c:type:: enum nvme_id_ctrl_plsi
+
+   Power Loss Signaling Information
+
+**Constants**
+
+``NVME_CTRL_PLSI_PLSEPF_SHIFT``
+  Shift amount to get the PLS Emergency Power Fail from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.plsi field.
+
+``NVME_CTRL_PLSI_PLSFQ_SHIFT``
+  Shift amount to get the PLS Forced Quiescence from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.plsi field.
+
+``NVME_CTRL_PLSI_PLSEPF_MASK``
+  Mask to get the PLS Emergency Power Fail from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.plsi field.
+
+``NVME_CTRL_PLSI_PLSFQ_MASK``
+  Mask to get the PLS Forced Quiescence from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.plsi field.
+
+
+
+
+.. c:type:: enum nvme_id_ctrl_crcap
+
+   Power Loss Signaling Information
+
+**Constants**
+
+``NVME_CTRL_CRCAP_RRSUP_SHIFT``
+  Shift amount to get the Reachability Reporting Supported
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.crcap field.
+
+``NVME_CTRL_CRCAP_RGIDC_SHIFT``
+  Shift amount to get the Reachability Group ID Changeable
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.crcap field.
+
+``NVME_CTRL_CRCAP_RRSUP_MASK``
+  Mask to get the Reachability Reporting Supported from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.crcap field.
+
+``NVME_CTRL_CRCAP_RGIDC_MASK``
+  Mask to get the Reachability Group ID Changeable from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.crcap field.
+
+
+
+
 .. c:type:: enum nvme_id_ctrl_cntrltype
 
    Controller types
@@ -2402,7 +2586,7 @@ power scale value
   is not part of an NVMe Storage Device.
 
 ``NVME_CTRL_NVMSR_NVMEE``
-  If set’, then the NVM Subsystem is part of an NVMe
+  If set, then the NVM Subsystem is part of an NVMe
   Enclosure; if cleared, then the NVM Subsystem is
   not part of an NVMe Enclosure.
 
@@ -2457,6 +2641,78 @@ power scale value
 
 **Constants**
 
+``NVME_CTRL_OACS_SSRS_SHIFT``
+  Shift amount to get the Security Send Receive supported
+
+``NVME_CTRL_OACS_FNVMS_SHIFT``
+  Shift amount to get the Format NVM supported
+
+``NVME_CTRL_OACS_FWDS_SHIFT``
+  Shift amount to get the Firmware Download supported
+
+``NVME_CTRL_OACS_NMS_SHIFT``
+  Shift amount to get the Namespace Management supported
+
+``NVME_CTRL_OACS_DSTS_SHIFT``
+  Shift amount to get the Device Self-test supported
+
+``NVME_CTRL_OACS_DIRS_SHIFT``
+  Shift amount to get the Directives supported
+
+``NVME_CTRL_OACS_NSRS_SHIFT``
+  Shift amount to get the NVMe-MI Send Receive supported
+
+``NVME_CTRL_OACS_VMS_SHIFT``
+  Shift amount to get the Virtualization Management supported
+
+``NVME_CTRL_OACS_DBCS_SHIFT``
+  Shift amount to get the Doorbell Buffer Config supported
+
+``NVME_CTRL_OACS_GLSS_SHIFT``
+  Shift amount to get the Get LBA Status supported
+
+``NVME_CTRL_OACS_CFLS_SHIFT``
+  Shift amount to get the Command and Feature Lockdown supported
+
+``NVME_CTRL_OACS_HMLMS_SHIFT``
+  Shift amount to get the Host Managed Live Migration support
+
+``NVME_CTRL_OACS_SSRS_MASK``
+  Mask to get the Security Send Receive supported
+
+``NVME_CTRL_OACS_FNVMS_MASK``
+  Mask to get the Format NVM supported
+
+``NVME_CTRL_OACS_FWDS_MASK``
+  Mask to get the Firmware Download supported
+
+``NVME_CTRL_OACS_NMS_MASK``
+  Mask to get the Namespace Management supported
+
+``NVME_CTRL_OACS_DSTS_MASK``
+  Mask to get the Device Self-test supported
+
+``NVME_CTRL_OACS_DIRS_MASK``
+  Mask to get the Directives supported
+
+``NVME_CTRL_OACS_NSRS_MASK``
+  Mask to get the NVMe-MI Send Receive supported
+
+``NVME_CTRL_OACS_VMS_MASK``
+  Mask to get the Virtualization Management supported
+
+``NVME_CTRL_OACS_DBCS_MASK``
+  Mask to get the Doorbell Buffer Config supported
+
+``NVME_CTRL_OACS_GLSS_MASK``
+  Mask to get the Get LBA Status supported
+
+``NVME_CTRL_OACS_CFLS_MASK``
+  Mask to get the Command and Feature Lockdown supported
+
+``NVME_CTRL_OACS_HMLMS_MASK``
+  Mask to get the Host Managed Live Migration support
+
 ``NVME_CTRL_OACS_SECURITY``
   If set, then the controller supports the
   Security Send and Security Receive commands.
@@ -2501,6 +2757,10 @@ power scale value
 ``NVME_CTRL_OACS_CMD_FEAT_LD``
   If set, then the controller supports the command
   and feature lockdown capability.
+
+``NVME_CTRL_OACS_HMLM``
+  If set, then the controller supports the command
+  and Host Managed Live Migration capability.
 
 
 
@@ -2631,9 +2891,29 @@ power scale value
 
 **Constants**
 
+``NVME_CTRL_DSTO_SDSO_SHIFT``
+  Shift amount to get the value of Single Device Self-test
+  Operation from Device Self-test Options field.
+
+``NVME_CTRL_DSTO_HIRS_SHIFT``
+  Shift amount to get the value of  Host-Initiated Refresh
+  Support from Device Self-test Options field.
+
+``NVME_CTRL_DSTO_SDSO_MASK``
+  Mask to get the value of Single Device Self-test Operation
+
+``NVME_CTRL_DSTO_HIRS_MASK``
+  Mask to get the value of Host-Initiated Refresh Support
+
 ``NVME_CTRL_DSTO_ONE_DST``
-  If set,  then the NVM subsystem supports only one
-  device self-test operation in progress at a time.
+  If set, then the NVM subsystem supports only one device
+  self-test operation in progress at a time. If cleared,
+  then the NVM subsystem supports one device self-test
+  operation per controller at a time.
+
+``NVME_CTRL_DSTO_HIRS``
+  If set, then the controller supports the Host-Initiated
+  Refresh capability.
 
 
 
@@ -2722,6 +3002,31 @@ power scale value
   If set, then the controller supports a
   non-zero value in the ANAGRPID field of
   the Namespace Management command.
+
+
+
+
+.. c:type:: enum nvme_id_ctrl_kpioc
+
+   Key Per I/O Capabilities
+
+**Constants**
+
+``NVME_CTRL_KPIOC_KPIOS_SHIFT``
+  Shift amount to get the Key Per I/O Supported from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.kpioc field.
+
+``NVME_CTRL_KPIOC_KPIOSC_SHIFT``
+  Shift amount to get the Key Per I/O Scope from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.kpioc field.
+
+``NVME_CTRL_KPIOC_KPIOS_MASK``
+  Mask to get the Key Per I/O Supported from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.kpioc field.
+
+``NVME_CTRL_KPIOC_KPIOSC_MASK``
+  Mask to get the Key Per I/O Scope from the
+  :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.kpioc field.
 
 
 
@@ -2816,6 +3121,19 @@ power scale value
   If set, then all copy operations for
   the Copy command are fast copy
   operations.
+
+``NVME_CTRL_ONCS_WRITE_ZEROES_DEALLOCATE``
+  If MAXWZD bit set, then the maximum data
+  size for Write Zeroes command depends on the
+  value of the Deallocate bit in the Write Zeroes
+  command and the value in the WZDSL field in the
+  I/O Command Set specific Identify Controller
+  data structure.
+
+``NVME_CTRL_ONCS_NAMESPACE_ZEROES``
+  If NSZS bit set, then the controller supports
+  the Namespace Zeroes (NSZ) bit in the NVM
+  Command Set Write Zeroes command.
 
 
 
@@ -2982,6 +3300,39 @@ power scale value
 
 
 
+.. c:type:: enum nvme_id_ctrl_trattr
+
+   Tracking Attributes
+
+**Constants**
+
+``NVME_CTRL_TRATTR_THMCS_SHIFT``
+  Shift amount to get the Track Host Memory Changes Support
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.trattr field.
+
+``NVME_CTRL_TRATTR_TUDCS_SHIFT``
+  Shift amount to get the Track User Data Changes Support
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.trattr field.
+
+``NVME_CTRL_TRATTR_MRTLL_SHIFT``
+  Shift amount to get the Memory Range Tracking Length Limit
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.trattr field.
+
+``NVME_CTRL_TRATTR_THMCS_MASK``
+  Mask to get the Track Host Memory Changes Support
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.trattr field.
+
+``NVME_CTRL_TRATTR_TUDCS_MASK``
+  Mask to get the Track User Data Changes Support
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.trattr field.
+
+``NVME_CTRL_TRATTR_MRTLL_MASK``
+  Mask to get the Memory Range Tracking Length Limit
+  from the :c:type:`struct nvme_id_ctrl <nvme_id_ctrl>`.trattr field.
+
+
+
+
 .. c:type:: enum nvme_id_ctrl_fcatt
 
    This field indicates attributes of the controller that are specific to NVMe over Fabrics.
@@ -3104,9 +3455,11 @@ power scale value
     __le16 mssrl;
     __le32 mcl;
     __u8 msrc;
-    __u8 rsvd81;
+    __u8 kpios;
     __u8 nulbaf;
-    __u8 rsvd83[9];
+    __u8 rsvd83;
+    __le32 kpiodaag;
+    __u8 rsvd88[4];
     __le32 anagrpid;
     __u8 rsvd96[3];
     __u8 nsattr;
@@ -3251,8 +3604,8 @@ power scale value
   Range entries that may be used to specify source data in a Copy
   command. This is a 0’s based value.
 
-``rsvd81``
-  Reserved
+``kpios``
+  Key Per I/O Status indicates namespace Key Per I/O capability status.
 
 ``nulbaf``
   Number of Unique Capability LBA Formats defines the number of
@@ -3261,6 +3614,14 @@ power scale value
   formats shall be allocated in order and packed sequentially.
 
 ``rsvd83``
+  Reserved
+
+``kpiodaag``
+  Key Per I/O Data Access Alignment and Granularity indicates the
+  alignment and granularity in logical blocks that is required
+  for commands that support a KPIOTAG value in the CETYPE field.
+
+``rsvd88``
   Reserved
 
 ``anagrpid``
@@ -3774,7 +4135,11 @@ power scale value
     __le16 nvmsetid;
     __le16 endgid;
     __u8 nstat;
-    __u8 rsvd15[4081];
+    __u8 kpios;
+    __le16 maxkt;
+    __u8 rsvd18[2];
+    __le32 rgrpid;
+    __u8 rsvd24[4072];
   };
 
 **Members**
@@ -3810,8 +4175,20 @@ power scale value
 ``nstat``
   Namespace Status
 
-``rsvd15``
-  reserved
+``kpios``
+  Key Per I/O Status
+
+``maxkt``
+  Maximum Key Tag
+
+``rsvd18``
+  Reserved
+
+``rgrpid``
+  Reachability Group Identifier
+
+``rsvd24``
+  Reserved
 
 
 
@@ -3996,6 +4373,21 @@ power scale value
 
 
 
+.. c:type:: enum nvme_id_ctrl_nvm_lbamqf
+
+   LBA Migration Queue Format
+
+**Constants**
+
+``NVME_ID_CTRL_NVM_LBAMQF_TYPE_0``
+
+``NVME_ID_CTRL_NVM_LBAMQF_VENDOR_MIN``
+
+``NVME_ID_CTRL_NVM_LBAMQF_VENDOR_MAX``
+
+
+
+
 .. c:type:: struct nvme_id_ctrl_nvm
 
    I/O Command Set Specific Identify Controller data structure
@@ -4011,7 +4403,8 @@ power scale value
     __u8 dmrl;
     __le32 dmrsl;
     __le64 dmsl;
-    __u8 rsvd16[2];
+    __u8 kpiocap;
+    __u8 wzdsl;
     __le16 aocs;
     __le32 ver;
     __u8 lbamqf;
@@ -4038,8 +4431,11 @@ power scale value
 ``dmsl``
   Dataset Management Size Limit
 
-``rsvd16``
-  Reserved
+``kpiocap``
+  Key Per I/O Capabilities
+
+``wzdsl``
+  Write Zeroes With Deallocate Size Limit
 
 ``aocs``
   Admin Optional Command Support
@@ -4461,6 +4857,49 @@ power scale value
 
 
 
+.. c:type:: enum nvme_id_iocs_iocsc
+
+   This field indicates the Identify I/O Command Set Data Structure
+
+**Constants**
+
+``NVME_IOCS_IOCSC_NVMCS_SHIFT``
+  Shift amount to get the value of NVM Command Set
+
+``NVME_IOCS_IOCSC_NVMCS_MASK``
+  Mask to get the value of NVM Command Set
+
+``NVME_IOCS_IOCSC_KVCS_SHIFT``
+  Shift amount to get the value of Key Value Command Set
+
+``NVME_IOCS_IOCSC_KVCS_MASK``
+  Mask to get the value of Key Value Command Set
+
+``NVME_IOCS_IOCSC_ZNSCS_SHIFT``
+  Shift amount to get the value of Zoned Namespace Command
+  Set
+
+``NVME_IOCS_IOCSC_ZNSCS_MASK``
+  Mask to get the value of Zoned Namespace Command Set
+
+``NVME_IOCS_IOCSC_SLMCS_SHIFT``
+  Shift amount to get the value of Subsystem Local Memory
+  Command Set
+
+``NVME_IOCS_IOCSC_SLMCS_MASK``
+  Mask to get the value of Subsystem Local Memory Command Set
+
+``NVME_IOCS_IOCSC_CPNCS_SHIFT``
+  Shift amount to get the value of Computational Programs
+  Namespace Command Set
+
+``NVME_IOCS_IOCSC_CPNCS_MASK``
+  Mask to get the value of Computational Programs Namespace
+  Command Set
+
+
+
+
 .. c:type:: struct nvme_id_domain_attr
 
    Domain Attributes Entry
@@ -4704,6 +5143,27 @@ Supported Log Pages (Log Identifier 00h)
   This field shall be set to 1h. If set, **csi** and **opcode**
   will have valid values.
 
+
+
+
+
+.. c:type:: enum nvme_err_status_field
+
+   This field indicates the error information log entry status field
+
+**Constants**
+
+``NVME_ERR_SF_PHASE_TAG_SHIFT``
+  Shift amount to get the phase tag
+
+``NVME_ERR_SF_STATUS_FIELD_SHIFT``
+  Shift amount to get the status field
+
+``NVME_ERR_SF_PHASE_TAG_MASK``
+  Mask to get the phase tag
+
+``NVME_ERR_SF_STATUS_FIELD_MASK``
+  Mask to get the status field
 
 
 
@@ -4954,6 +5414,66 @@ Supported Log Pages (Log Identifier 00h)
    Critical Warning
 
 **Constants**
+
+``NVME_SMART_CW_ASCBT_SHIFT``
+  Shift amount to get the available spare capacity has fallen
+  below the threshold.
+
+``NVME_SMART_CW_TTC_SHIFT``
+  Shift amount to get the temperature is either greater
+  than or equal to an over temperature threshold; or
+  less than or equal to an under temperature threshold.
+
+``NVME_SMART_CW_NDR_SHIFT``
+  Shift amount to get the NVM subsystem reliability has
+  been degraded due to significant media related errors
+  or any internal error that degrades NVM subsystem
+  reliability.
+
+``NVME_SMART_CW_AMRO_SHIFT``
+  Shift amount to get the all of the media has been placed in read
+  only mode. The controller shall not set this bit if
+  the read-only condition on the media is a result of
+  a change in the write protection state of a namespace.
+
+``NVME_SMART_CW_VMBF_SHIFT``
+  Shift amount to get the  volatile memory backup
+  device has failed. This field is only valid if the
+  controller has a volatile memory backup solution.
+
+``NVME_SMART_CW_PMRRO_SHIFT``
+  Shift amount to get the Persistent Memory Region has become
+  read-only or unreliable.
+
+``NVME_SMART_CW_ASCBT_MASK``
+  If set, then the available spare capacity has fallen
+  below the threshold.
+
+``NVME_SMART_CW_TTC_MASK``
+  Mask to get the temperature is either greater
+  than or equal to an over temperature threshold; or
+  less than or equal to an under temperature threshold.
+
+``NVME_SMART_CW_NDR_MASK``
+  Mask to get the NVM subsystem reliability has
+  been degraded due to significant media related errors
+  or any internal error that degrades NVM subsystem
+  reliability.
+
+``NVME_SMART_CW_AMRO_MASK``
+  Mask to get the all of the media has been placed in read
+  only mode. The controller shall not set this bit if
+  the read-only condition on the media is a result of
+  a change in the write protection state of a namespace.
+
+``NVME_SMART_CW_VMBF_MASK``
+  Mask to get the volatile memory backup
+  device has failed. This field is only valid if the
+  controller has a volatile memory backup solution.
+
+``NVME_SMART_CW_PMRRO_MASK``
+  Mask to get the Persistent Memory Region has become
+  read-only or unreliable.
 
 ``NVME_SMART_CRIT_SPARE``
   If set, then the available spare capacity has fallen
@@ -5260,6 +5780,9 @@ Supported Log Pages (Log Identifier 00h)
 ``NVME_ST_CODE_EXTENDED``
   Extended device self-test operation.
 
+``NVME_ST_CODE_HOST_INIT``
+  Host-Initiated Refresh operation.
+
 ``NVME_ST_CODE_VS``
   Vendor specific.
 
@@ -5394,6 +5917,30 @@ Supported Log Pages (Log Identifier 00h)
 
 
 
+.. c:type:: enum nvme_telemetry_da
+
+   Telemetry Log Data Area
+
+**Constants**
+
+``NVME_TELEMETRY_DA_CTRL_DETERMINE``
+  The controller determines the data areas to be created
+
+``NVME_TELEMETRY_DA_1``
+  Data Area 1
+
+``NVME_TELEMETRY_DA_2``
+  Data Area 2
+
+``NVME_TELEMETRY_DA_3``
+  Data Area 3
+
+``NVME_TELEMETRY_DA_4``
+  Data Area 4
+
+
+
+
 .. c:type:: struct nvme_telemetry_log
 
    Retrieve internal data specific to the manufacturer.
@@ -5411,8 +5958,12 @@ Supported Log Pages (Log Identifier 00h)
     __le16 dalb3;
     __u8 rsvd14[2];
     __le32 dalb4;
-    __u8 rsvd20[361];
-    __u8 hostdgn;
+    __u8 rsvd20[360];
+    __u8 ths;
+    union {
+      __u8 hostdgn;
+      __u8 tcs;
+    };
     __u8 ctrlavail;
     __u8 ctrldgn;
     __u8 rsnident[128];
@@ -5433,31 +5984,40 @@ Supported Log Pages (Log Identifier 00h)
   for the controller vendor that is able to interpret the data.
 
 ``dalb1``
-  Telemetry Controller-Initiated Data Area 1 Last Block is
+  Telemetry Host/Controller Initiated Data Area 1 Last Block is
   the value of the last block in this area.
 
 ``dalb2``
-  Telemetry Controller-Initiated Data Area 1 Last Block is
+  Telemetry Host/Controller Initiated Data Area 1 Last Block is
   the value of the last block in this area.
 
 ``dalb3``
-  Telemetry Controller-Initiated Data Area 1 Last Block is
+  Telemetry Host/ControllerInitiated Data Area 1 Last Block is
   the value of the last block in this area.
 
 ``rsvd14``
   Reserved
 
 ``dalb4``
-  Telemetry Controller-Initiated Data Area 4 Last Block is
+  Telemetry Host/Controller Initiated Data Area 4 Last Block is
   the value of the last block in this area.
 
 ``rsvd20``
   Reserved
 
+``ths``
+  Telemetry Host-Initiated Scope
+
+``{unnamed_union}``
+  anonymous
+
 ``hostdgn``
   Telemetry Host-Initiated Data Generation Number is a
   value that is incremented each time the host initiates a
-  capture of its internal controller state in the controller .
+  capture of its internal controller state in the controller.
+
+``tcs``
+  Telemetry Controller-Initiated Scope
 
 ``ctrlavail``
   Telemetry Controller-Initiated Data Available, if cleared,
@@ -6840,6 +7400,9 @@ bytes, in size. This log captures the controller’s internal state.
 ``NVME_FID_SUPPORTED_EFFECTS_SCOPE_NSS``
   NVM Subsystem Scope
 
+``NVME_FID_SUPPORTED_EFFECTS_CDQSCP``
+  Controller Data Queue
+
 
 
 
@@ -6996,6 +7559,142 @@ bytes, in size. This log captures the controller’s internal state.
 ``NVME_BOOT_PARTITION_INFO_ABPID_MASK``
   Mask to get the active boot partition ID from the
   :c:type:`struct nvme_boot_partition <nvme_boot_partition>`.bpinfo field.
+
+
+
+
+.. c:type:: struct nvme_rotational_media_info_log
+
+   Rotational Media Information Log
+
+**Definition**
+
+::
+
+  struct nvme_rotational_media_info_log {
+    __le16 endgid;
+    __le16 numa;
+    __le16 nrs;
+    __u8 rsvd6[2];
+    __le32 spinc;
+    __le32 fspinc;
+    __le32 ldc;
+    __le32 fldc;
+    __u8 rsvd24[488];
+  };
+
+**Members**
+
+``endgid``
+  Endurance Group Identifier
+
+``numa``
+  Number of Actuators
+
+``nrs``
+  Nominal Rotational Speed
+
+``rsvd6``
+  Reserved
+
+``spinc``
+  Spinup Count
+
+``fspinc``
+  Failed Spinup Count
+
+``ldc``
+  Load Count
+
+``fldc``
+  Failed Load Count
+
+``rsvd24``
+  Reserved
+
+
+
+
+
+.. c:type:: struct nvme_dispersed_ns_participating_nss_log
+
+   Dispersed Namespace Participating NVM Subsystems Log
+
+**Definition**
+
+::
+
+  struct nvme_dispersed_ns_participating_nss_log {
+    __le64 genctr;
+    __le64 numpsub;
+    __u8 rsvd16[240];
+    __u8 participating_nss[];
+  };
+
+**Members**
+
+``genctr``
+  Generation Counter
+
+``numpsub``
+  Number of Participating NVM Subsystems
+
+``rsvd16``
+  Reserved
+
+``participating_nss``
+  Participating NVM Subsystem Entry
+
+
+
+
+
+.. c:type:: struct nvme_mgmt_addr_desc
+
+   Management Address Descriptor
+
+**Definition**
+
+::
+
+  struct nvme_mgmt_addr_desc {
+    __u8 mat;
+    __u8 rsvd1[3];
+    __u8 madrs[508];
+  };
+
+**Members**
+
+``mat``
+  Management Address Type
+
+``rsvd1``
+  Reserved
+
+``madrs``
+  Management Address
+
+
+
+
+
+.. c:type:: struct nvme_mgmt_addr_list_log
+
+   Management Address List Log
+
+**Definition**
+
+::
+
+  struct nvme_mgmt_addr_list_log {
+    struct nvme_mgmt_addr_desc      mad[8];
+  };
+
+**Members**
+
+``mad``
+  Management Address Descriptor
+
 
 
 
@@ -7236,6 +7935,150 @@ bytes, in size. This log captures the controller’s internal state.
 
 ``NVME_PHY_RX_EOM_COMPLETED``
   EOM Completed
+
+
+
+
+.. c:type:: struct nvme_reachability_group_desc
+
+   Reachability Group Descriptor
+
+**Definition**
+
+::
+
+  struct nvme_reachability_group_desc {
+    __le32 rgid;
+    __le32 nnid;
+    __le64 chngc;
+    __u8 rsvd16[16];
+    __le32 nsid[];
+  };
+
+**Members**
+
+``rgid``
+  Reachability Group ID
+
+``nnid``
+  Number of NSID Values
+
+``chngc``
+  Change Count
+
+``rsvd16``
+  Reserved
+
+``nsid``
+  Namespace Identifier List
+
+
+
+
+
+.. c:type:: struct nvme_reachability_groups_log
+
+   Reachability Groups Log
+
+**Definition**
+
+::
+
+  struct nvme_reachability_groups_log {
+    __le64 chngc;
+    __le16 nrgd;
+    __u8 rsvd10[6];
+    struct nvme_reachability_group_desc     rgd[];
+  };
+
+**Members**
+
+``chngc``
+  Change Count
+
+``nrgd``
+  Number of Reachability Group Descriptors
+
+``rsvd10``
+  Reserved
+
+``rgd``
+  Reachability Group Descriptor List
+
+
+
+
+
+.. c:type:: struct nvme_reachability_association_desc
+
+   Reachability Association Descriptor
+
+**Definition**
+
+::
+
+  struct nvme_reachability_association_desc {
+    __le32 rasid;
+    __le32 nrid;
+    __le64 chngc;
+    __u8 rac;
+    __u8 rsvd17[15];
+    __le32 rgid[];
+  };
+
+**Members**
+
+``rasid``
+  Reachability Association ID
+
+``nrid``
+  Number of RGID Values
+
+``chngc``
+  Change Count
+
+``rac``
+  Reachability Association Characteristics
+
+``rsvd17``
+  Reserved
+
+``rgid``
+  Reachability Group Identifier List
+
+
+
+
+
+.. c:type:: struct nvme_reachability_associations_log
+
+   Reachability Associations Log
+
+**Definition**
+
+::
+
+  struct nvme_reachability_associations_log {
+    __le64 chngc;
+    __le16 nrad;
+    __u8 rsvd10[6];
+    struct nvme_reachability_association_desc       rad[];
+  };
+
+**Members**
+
+``chngc``
+  Change Count
+
+``nrad``
+  Number of Reachability Association Descriptors
+
+``rsvd10``
+  Reserved
+
+``rad``
+  Reachability Association Descriptor List
+
 
 
 
@@ -8598,7 +9441,7 @@ bytes, in size. This log captures the controller’s internal state.
 
 .. c:type:: struct nvme_feat_fdp_events_cdw11
 
-   FDP Events Feature Command Dword 11
+   FDP Events Feature Command Dword 11 Deprecated: doesn't support this struct. Use NVME_FEAT_FDPE_*** definitions instead.
 
 **Definition**
 
@@ -8861,6 +9704,169 @@ bytes, in size. This log captures the controller’s internal state.
 
 ``NVME_APST_ENTRY_ITPT_MASK``
   Idle Time Prior to Transition Mask
+
+
+
+
+.. c:type:: struct nvme_std_perf_attr
+
+   Standard performance attribute structure
+
+**Definition**
+
+::
+
+  struct nvme_std_perf_attr {
+    __u8 rsvd0[4];
+    __u8 r4karl;
+    __u8 rsvd5[4091];
+  };
+
+**Members**
+
+``rsvd0``
+  Reserved
+
+``r4karl``
+  Random 4 KiB average read latency
+
+``rsvd5``
+  Reserved
+
+
+
+
+
+.. c:type:: struct nvme_perf_attr_id
+
+   Performance attribute identifier structure
+
+**Definition**
+
+::
+
+  struct nvme_perf_attr_id {
+    __u8 id[NVME_UUID_LEN];
+  };
+
+**Members**
+
+``id``
+  Performance attribute identifier
+
+
+
+
+
+.. c:type:: struct nvme_perf_attr_id_list
+
+   Performance attribute identifier list structure
+
+**Definition**
+
+::
+
+  struct nvme_perf_attr_id_list {
+    __u8 attrtyp;
+    __u8 msvspa;
+    __u8 usvspa;
+    __u8 rsvd3[13];
+    struct nvme_perf_attr_id id_list[63];
+    __u8 rsvd1024[3072];
+  };
+
+**Members**
+
+``attrtyp``
+  Bits 7-3: Reserved
+  Bits 2-0: Attribute type
+
+``msvspa``
+  Maximum saveable vendor specific performance attributes
+
+``usvspa``
+  Unused saveable vendor specific performance attributes
+
+``rsvd3``
+  Reserved
+
+``id_list``
+  Performance attribute identifier list
+
+``rsvd1024``
+  Reserved
+
+
+
+
+
+.. c:type:: struct nvme_vs_perf_attr
+
+   Vendor specific performance attribute structure
+
+**Definition**
+
+::
+
+  struct nvme_vs_perf_attr {
+    __u8 paid[16];
+    __u8 rsvd16[14];
+    __le16 attrl;
+    __u8 vs[4064];
+  };
+
+**Members**
+
+``paid``
+  Performance attribute identifier
+
+``rsvd16``
+  Reserved
+
+``attrl``
+  Attribute Length
+
+``vs``
+  Vendor specific
+
+
+
+
+
+.. c:type:: struct nvme_perf_characteristics
+
+   Performance attribute structure
+
+**Definition**
+
+::
+
+  struct nvme_perf_characteristics {
+    union {
+      struct nvme_std_perf_attr std_perf[0];
+      struct nvme_perf_attr_id_list id_list[0];
+      struct nvme_vs_perf_attr vs_perf[0];
+      __u8 attr_buf[4096];
+    };
+  };
+
+**Members**
+
+``{unnamed_union}``
+  anonymous
+
+``std_perf``
+  Standard performance attribute
+
+``id_list``
+  Performance attribute identifier list
+
+``vs_perf``
+  Vendor specific performance attribute
+
+``attr_buf``
+  Attribute buffer
+
 
 
 
@@ -9173,8 +10179,8 @@ bytes, in size. This log captures the controller’s internal state.
     __u8 acre;
     __u8 etdas;
     __u8 lbafee;
-    __u8 rsvd3;
-    __u16 cdfe;
+    __u8 hdisns;
+    __le16 cdfe;
     __u8 rsvd6[506];
   };
 
@@ -9189,8 +10195,8 @@ bytes, in size. This log captures the controller’s internal state.
 ``lbafee``
   LBA Format Extension Enable
 
-``rsvd3``
-  Reserved
+``hdisns``
+  Host Dispersed Namespace Support
 
 ``cdfe``
   Copy Descriptor Formats Enable
@@ -9780,6 +10786,12 @@ bytes, in size. This log captures the controller’s internal state.
 
 ``NVME_AER_NOTICE``
   Notice event
+
+``NVME_AER_IMMEDIATE``
+  Immediate
+
+``NVME_AER_ONESHOT``
+  One-Shot
 
 ``NVME_AER_CSS``
   NVM Command Set Specific events
@@ -10655,6 +11667,268 @@ entries are of a variable lengths (TEL), TEL is always a multiple of
 
 ``rsvd5``
   Reserved
+
+
+
+
+
+.. c:type:: struct nvme_host_ext_discover_log
+
+   Host Extended Discovery Log
+
+**Definition**
+
+::
+
+  struct nvme_host_ext_discover_log {
+    __u8 trtype;
+    __u8 adrfam;
+    __u8 rsvd2[8];
+    __le16 eflags;
+    __u8 rsvd12[244];
+    char hostnqn[NVME_NQN_LENGTH];
+    char traddr[NVMF_TRADDR_SIZE];
+    union nvmf_tsas         tsas;
+    __le32 tel;
+    __le16 numexat;
+    __u8 rsvd1030[2];
+    struct nvmf_ext_attr    exat[];
+  };
+
+**Members**
+
+``trtype``
+  Transport Type
+
+``adrfam``
+  Address Family
+
+``rsvd2``
+  Reserved
+
+``eflags``
+  Entry Flags
+
+``rsvd12``
+  Reserved
+
+``hostnqn``
+  Host NVMe Qualified Name
+
+``traddr``
+  Transport Address
+
+``tsas``
+  Transport Specific Address Subtype
+
+``tel``
+  Total Entry Length
+
+``numexat``
+  Number of Extended Attributes
+
+``rsvd1030``
+  Reserved
+
+``exat``
+  Extended Attributes List
+
+
+
+
+
+.. c:type:: struct nvme_host_discover_log
+
+   Host Discovery Log
+
+**Definition**
+
+::
+
+  struct nvme_host_discover_log {
+    __le64 genctr;
+    __le64 numrec;
+    __le16 recfmt;
+    __u8 hdlpf;
+    __u8 rsvd19;
+    __le32 thdlpl;
+    __u8 rsvd24[1000];
+    struct nvme_host_ext_discover_log       hedlpe[];
+  };
+
+**Members**
+
+``genctr``
+  Generation Counter
+
+``numrec``
+  Number of Records
+
+``recfmt``
+  Record Format
+
+``hdlpf``
+  Host Discovery Log Page Flags
+
+``rsvd19``
+  Reserved
+
+``thdlpl``
+  Total Host Discovery Log Page Length
+
+``rsvd24``
+  Reserved
+
+``hedlpe``
+  Host Extended Discovery Log Page Entry List
+
+
+
+
+
+.. c:type:: struct nvme_ave_tr_record
+
+   AVE Transport Record
+
+**Definition**
+
+::
+
+  struct nvme_ave_tr_record {
+    __u8 aveadrfam;
+    __u8 rsvd1;
+    __le16 avetrsvcid;
+    __u8 avetraddr[16];
+  };
+
+**Members**
+
+``aveadrfam``
+  AVE Address Family
+
+``rsvd1``
+  Reserved
+
+``avetrsvcid``
+  AVE Transport Service Identifier
+
+``avetraddr``
+  AVE Transport Address
+
+
+
+
+
+.. c:type:: struct nvme_ave_discover_log_entry
+
+   AVE Discovery Log Entry
+
+**Definition**
+
+::
+
+  struct nvme_ave_discover_log_entry {
+    __le32 tel;
+    char avenqn[224];
+    __u8 numatr;
+    __u8 rsvd229[3];
+    struct nvme_ave_tr_record       atr[];
+  };
+
+**Members**
+
+``tel``
+  Total Entry Length
+
+``avenqn``
+  AVE NQN
+
+``numatr``
+  Number of AVE Transport Records
+
+``rsvd229``
+  Reserved
+
+``atr``
+  AVE Transport Record List
+
+
+
+
+
+.. c:type:: struct nvme_ave_discover_log
+
+   AVE Discovery Log
+
+**Definition**
+
+::
+
+  struct nvme_ave_discover_log {
+    __le64 genctr;
+    __le64 numrec;
+    __le16 recfmt;
+    __u8 rsvd18[2];
+    __le32 tadlpl;
+    __u8 rsvd24[1000];
+    struct nvme_ave_discover_log_entry      adlpe[];
+  };
+
+**Members**
+
+``genctr``
+  Generation Counter
+
+``numrec``
+  Number of Records
+
+``recfmt``
+  Record Format
+
+``rsvd18``
+  Reserved
+
+``tadlpl``
+  Total AVE Discovery Log Page Length
+
+``rsvd24``
+  Reserved
+
+``adlpe``
+  AVE Discovery Log Page Entry List
+
+
+
+
+
+.. c:type:: struct nvme_pull_model_ddc_req_log
+
+   Pull Model DDC Request Log
+
+**Definition**
+
+::
+
+  struct nvme_pull_model_ddc_req_log {
+    __u8 ori;
+    __u8 rsvd1[3];
+    __le32 tpdrpl;
+    __u8 osp[];
+  };
+
+**Members**
+
+``ori``
+  Operation Request Identifier
+
+``rsvd1``
+  Reserved
+
+``tpdrpl``
+  Total Pull Model DDC Request Log Page Length
+
+``osp``
+  Operation Specific Parameters
 
 
 
@@ -11704,6 +12978,22 @@ entries are of a variable lengths (TEL), TEL is always a multiple of
   command requires access to media and
   the media is not ready.
 
+``NVME_SC_INVALID_KEY_TAG``
+  The command was aborted due to an invalid KEYTAG
+  field value.
+
+``NVME_SC_HOST_DISPERSED_NS_NOT_ENABLED``
+  The command is prohibited while the
+  Host Disperesed Namespace Support (HDISNS) field is not
+  set to 1h in the Host Behavior Support feature.
+
+``NVME_SC_HOST_ID_NOT_INITIALIZED``
+  Host Identifier Not Initialized.
+
+``NVME_SC_INCORRECT_KEY``
+  The command was aborted due to the key associated
+  with the KEYTAG field being incorrect.
+
 ``NVME_SC_FDP_DISABLED``
   Command is not allowed when
   Flexible Data Placement is disabled.
@@ -11740,6 +13030,25 @@ entries are of a variable lengths (TEL), TEL is always a multiple of
 ``NVME_SC_FORMAT_IN_PROGRESS``
   Format In Progress: A Format NVM command
   is in progress on the namespace.
+
+``NVME_SC_INVALID_VALUE_SIZE``
+  The value size is not valid.
+
+``NVME_SC_INVALID_KEY_SIZE``
+  The KV key size is not valid.
+
+``NVME_SC_KV_KEY_NOT_EXISTS``
+  The Store If Key Exists (SIKE) bit is set to
+  '1' in the Store Option field and the KV key does not
+  exists.
+
+``NVME_SC_UNRECOVERED_ERROR``
+  There was an unrecovered error when reading
+  from the meidum.
+
+``NVME_SC_KEY_EXISTS``
+  The Store If No Key Exists (SINKE) bit is set to '1'
+  in the Store Option field and the KV key exists.
 
 ``NVME_SC_CQ_INVALID``
   Completion Queue Invalid: The Completion
@@ -12444,8 +13753,41 @@ true if **status** is of the specified type and value
 ``nvme_admin_fabric_zoning_lookup``
   Fabric Zoning Lookup
 
+``nvme_admin_clear_export_nvm_res``
+  Clear Exported NVM Resource Configuration
+
 ``nvme_admin_fabric_zoning_send``
   Fabric Zoning Send
+
+``nvme_admin_create_export_nvms``
+  Create Exported NVM Subsystem
+
+``nvme_admin_manage_export_nvms``
+  Manage Exported NVM Subsystem
+
+``nvme_admin_manage_export_ns``
+  Manage Exported Namespace
+
+``nvme_admin_manage_export_port``
+  Manage Exported Port
+
+``nvme_admin_send_disc_log_page``
+  Send Discovery Log Page
+
+``nvme_admin_track_send``
+  Track Send
+
+``nvme_admin_track_receive``
+  Track Receive
+
+``nvme_admin_migration_send``
+  Migration Send
+
+``nvme_admin_migration_receive``
+  Migration Receive
+
+``nvme_admin_ctrl_data_queue``
+  Controller Data Queue
 
 ``nvme_admin_dbbuf``
   Doorbell Buffer Config
@@ -12465,8 +13807,17 @@ true if **status** is of the specified type and value
 ``nvme_admin_sanitize_nvm``
   Sanitize
 
+``nvme_admin_load_program``
+  Load Program
+
 ``nvme_admin_get_lba_status``
   Get LBA Status
+
+``nvme_admin_program_act_mgmt``
+  Program Activation Management
+
+``nvme_admin_mem_range_set_mgmt``
+  Memory Range Set Management
 
 
 
@@ -12560,7 +13911,17 @@ true if **status** is of the specified type and value
   Data Structure for Allocated Namespace ID
 
 ``NVME_IDENTIFY_CNS_COMMAND_SET_STRUCTURE``
-  Base Specification 2.0a section 5.17.2.21
+  I/O Command Set data structure
+
+``NVME_IDENTIFY_CNS_UNDERLYING_NS_LIST``
+  Get Underlying Namespace List
+
+``NVME_IDENTIFY_CNS_PORTS_LIST``
+  Get Ports List
+
+``NVME_IDENTIFY_CNS_IOCS_IND_ID_ALLOC_NS``
+  I/O Command Set Independent Identify Namespace data
+  structure for the specified allocated NSID
 
 ``NVME_IDENTIFY_CNS_SUPPORTED_CTRL_STATE_FORMATS``
   Supported Controller State Formats
@@ -12772,7 +14133,7 @@ true if **status** is of the specified type and value
   Host Behavior Support
 
 ``NVME_FEAT_FID_SANITIZE``
-  Endurance Group Event Configuration
+  Sanitize Config
 
 ``NVME_FEAT_FID_ENDURANCE_EVT_CFG``
   Endurance Group Event Configuration
@@ -12783,11 +14144,32 @@ true if **status** is of the specified type and value
 ``NVME_FEAT_FID_SPINUP_CONTROL``
   Spinup Control
 
+``NVME_FEAT_FID_POWER_LOSS_SIGNAL``
+  Power Loss Signaling Config
+
+``NVME_FEAT_FID_PERF_CHARACTERISTICS``
+  Performance Characteristics
+
 ``NVME_FEAT_FID_FDP``
   Flexible Data Placement
 
 ``NVME_FEAT_FID_FDP_EVENTS``
   FDP Events
+
+``NVME_FEAT_FID_NS_ADMIN_LABEL``
+  Namespace Admin Label
+
+``NVME_FEAT_FID_KEY_VALUE``
+  Key Value Configuration
+
+``NVME_FEAT_FID_CTRL_DATA_QUEUE``
+  Controller Data Queue
+
+``NVME_FEAT_FID_EMB_MGMT_CTRL_ADDR``
+  Embedded Management Controller Address
+
+``NVME_FEAT_FID_HOST_MGMT_AGENT_ADDR``
+  Host Management Agent Address
 
 ``NVME_FEAT_FID_ENH_CTRL_METADATA``
   Enhanced Controller Metadata
@@ -12812,6 +14194,9 @@ true if **status** is of the specified type and value
 
 ``NVME_FEAT_FID_WRITE_PROTECT``
   Namespace Write Protection Config
+
+``NVME_FEAT_FID_BP_WRITE_PROTECT``
+  Boot Partition Write Protection Config
 
 
 
@@ -12861,6 +14246,10 @@ true if **status** is of the specified type and value
 ``NVME_FEAT_TT_THSEL_SHIFT``
 
 ``NVME_FEAT_TT_THSEL_MASK``
+
+``NVME_FEAT_TT_TMPTHH_SHIFT``
+
+``NVME_FEAT_TT_TMPTHH_MASK``
 
 ``NVME_FEAT_ERROR_RECOVERY_TLER_SHIFT``
 
@@ -12934,6 +14323,46 @@ true if **status** is of the specified type and value
 
 ``NVME_FEAT_AE_EGA_MASK``
 
+``NVME_FEAT_AE_NNSSHDN_SHIFT``
+
+``NVME_FEAT_AE_NNSSHDN_MASK``
+
+``NVME_FEAT_AE_TTHRY_SHIFT``
+
+``NVME_FEAT_AE_TTHRY_MASK``
+
+``NVME_FEAT_AE_RASSN_SHIFT``
+
+``NVME_FEAT_AE_RASSN_MASK``
+
+``NVME_FEAT_AE_RGRP0_SHIFT``
+
+``NVME_FEAT_AE_RGRP0_MASK``
+
+``NVME_FEAT_AE_ANSAN_SHIFT``
+
+``NVME_FEAT_AE_ANSAN_MASK``
+
+``NVME_FEAT_AE_ZDCN_SHIFT``
+
+``NVME_FEAT_AE_ZDCN_MASK``
+
+``NVME_FEAT_AE_PMDRLPCN_SHIFT``
+
+``NVME_FEAT_AE_PMDRLPCN_MASK``
+
+``NVME_FEAT_AE_ADLPCN_SHIFT``
+
+``NVME_FEAT_AE_ADLPCN_MASK``
+
+``NVME_FEAT_AE_HDLPCN_SHIFT``
+
+``NVME_FEAT_AE_HDLPCN_MASK``
+
+``NVME_FEAT_AE_DLPCN_SHIFT``
+
+``NVME_FEAT_AE_DLPCN_MASK``
+
 ``NVME_FEAT_APST_APSTE_SHIFT``
 
 ``NVME_FEAT_APST_APSTE_MASK``
@@ -12986,6 +14415,14 @@ true if **status** is of the specified type and value
 
 ``NVME_FEAT_EG_EGCW_MASK``
 
+``NVME_FEAT_FDPE_PHNDL_SHIFT``
+
+``NVME_FEAT_FDPE_PHNDL_MASK``
+
+``NVME_FEAT_FDPE_NOET_SHIFT``
+
+``NVME_FEAT_FDPE_NOET_MASK``
+
 ``NVME_FEAT_SPM_PBSLC_SHIFT``
 
 ``NVME_FEAT_SPM_PBSLC_MASK``
@@ -13018,6 +14455,26 @@ true if **status** is of the specified type and value
 
 ``NVME_FEAT_IOCSP_IOCSCI_MASK``
 
+``NVME_FEAT_SPINUP_CONTROL_SHIFT``
+
+``NVME_FEAT_SPINUP_CONTROL_MASK``
+
+``NVME_FEAT_PLS_MODE_SHIFT``
+
+``NVME_FEAT_PLS_MODE_MASK``
+
+``NVME_FEAT_PERFC_ATTRI_SHIFT``
+
+``NVME_FEAT_PERFC_ATTRI_MASK``
+
+``NVME_FEAT_PERFC_RVSPA_SHIFT``
+
+``NVME_FEAT_PERFC_RVSPA_MASK``
+
+``NVME_FEAT_PERFC_ATTRTYP_SHIFT``
+
+``NVME_FEAT_PERFC_ATTRTYP_MASK``
+
 ``NVME_FEAT_FDP_ENABLED_SHIFT``
 
 ``NVME_FEAT_FDP_ENABLED_MASK``
@@ -13029,6 +14486,14 @@ true if **status** is of the specified type and value
 ``NVME_FEAT_FDP_EVENTS_ENABLE_SHIFT``
 
 ``NVME_FEAT_FDP_EVENTS_ENABLE_MASK``
+
+``NVME_FEAT_BPWPC_BP0WPS_SHIFT``
+
+``NVME_FEAT_BPWPC_BP0WPS_MASK``
+
+``NVME_FEAT_BPWPC_BP1WPS_SHIFT``
+
+``NVME_FEAT_BPWPC_BP1WPS_MASK``
 
 
 
@@ -13306,6 +14771,9 @@ true if **status** is of the specified type and value
 ``NVME_DST_STC_LONG``
   Start an extended device self-test operation
 
+``NVME_DST_STC_HOST_INIT``
+  Start a Host-Initiated Refresh operation
+
 ``NVME_DST_STC_VS``
   Start a vendor specific device self-test operation
 
@@ -13546,6 +15014,132 @@ true if **status** is of the specified type and value
 
 
 
+.. c:type:: enum nvme_feat_perfc_attri
+
+   performance characteristics attribute index
+
+**Constants**
+
+``NVME_FEAT_PERFC_ATTRI_STD``
+  standard performance attribute
+
+``NVME_FEAT_PERFC_ATTRI_ID_LIST``
+  performance attribute identifier list
+
+``NVME_FEAT_PERFC_ATTRI_VS_MIN``
+  vendor specific performance attribute minimum index
+
+``NVME_FEAT_PERFC_ATTRI_VS_MAX``
+  vendor specific performance attribute maximum index
+
+
+
+
+.. c:type:: enum nvme_feat_perfc_r4karl
+
+   standard performance attribute random 4 kib average latency
+
+**Constants**
+
+``NVME_FEAT_PERFC_R4KARL_NO_REPORT``
+  not reported
+
+``NVME_FEAT_PERFC_R4KARL_GE_100_SEC``
+  greater than or equal to 100 secs
+
+``NVME_FEAT_PERFC_R4KARL_GE_50_SEC``
+  greater than or equal to 50 secs and less than 100 secs
+
+``NVME_FEAT_PERFC_R4KARL_GE_10_SEC``
+  greater than or equal to 10 secs and less than 50 secs
+
+``NVME_FEAT_PERFC_R4KARL_GE_5_SEC``
+  greater than or equal to 5 secs and less than 10 secs
+
+``NVME_FEAT_PERFC_R4KARL_GE_1_SEC``
+  greater than or equal to 1 sec and less than 5 secs
+
+``NVME_FEAT_PERFC_R4KARL_GE_500_MS``
+  greater than or equal to 500 msecs and less than 1 sec
+
+``NVME_FEAT_PERFC_R4KARL_GE_100_MS``
+  greater than or equal to 100 msecs and less than 500 msecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_50_MS``
+  greater than or equal to 50 msecs and less than 100 msecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_10_MS``
+  greater than or equal to 10 msecs and less than 50 msecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_5_MS``
+  greater than or equal to 5 msecs and less than 10 msecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_1_MS``
+  greater than or equal to 1 msec and less than 5 msecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_500_US``
+  greater than or equal to 500 usecs and less than 1 msec
+
+``NVME_FEAT_PERFC_R4KARL_GE_100_US``
+  greater than or equal to 100 usecs and less than 500 usecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_50_US``
+  greater than or equal to 50 usecs and less than 100 usecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_10_US``
+  greater than or equal to 10 usecs and less than 50 usecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_5_US``
+  greater than or equal to 5 usecs and less than 10 usecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_1_US``
+  greater than or equal to 1 usec and less than 5 usecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_500_NS``
+  greater than or equal to 500 nsecs and less than 1 usec
+
+``NVME_FEAT_PERFC_R4KARL_GE_100_NS``
+  greater than or equal to 100 nsecs and less than 500 nsecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_50_NS``
+  greater than or equal to 50 nsecs and less than 100 nsecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_10_NS``
+  greater than or equal to 10 nsecs and less than 50 nsecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_5_NS``
+  greater than or equal to 5 nsecs and less than 10 nsecs
+
+``NVME_FEAT_PERFC_R4KARL_GE_1_NS``
+  greater than or equal to 1 nsec and less than 5 nsecs
+
+
+
+
+.. c:type:: enum nvme_feat_bpwp_state
+
+   Boot Partition Write Protection State
+
+**Constants**
+
+``NVME_FEAT_BPWPS_CHANGE_NOT_REQUESTED``
+  Change in state not requested
+
+``NVME_FEAT_BPWPS_WRITE_UNLOCKED``
+  Write Unlocked
+
+``NVME_FEAT_BPWPS_WRITE_LOCKED``
+  Write Locked
+
+``NVME_FEAT_BPWPS_WRITE_LOCKED_PWR_CYCLE``
+  Write Locked Until Power Cycle
+
+``NVME_FEAT_BPWPS_WRITE_PROTECTION_RPMB``
+  Write Protection controlled by RPMB
+
+
+
+
 .. c:type:: enum nvme_fctype
 
    Fabrics Command Types
@@ -13657,6 +15251,9 @@ true if **status** is of the specified type and value
 ``nvme_zns_cmd_append``
   Zone Append
 
+``nvme_cmd_fabric``
+  Fabric Commands
+
 
 
 
@@ -13707,6 +15304,9 @@ true if **status** is of the specified type and value
 
 ``NVME_IO_DTYPE_STREAMS``
   Directive Type Streams
+
+``NVME_IO_NSZ``
+  Namespace Zeroes
 
 ``NVME_IO_STC``
   Storage Tag Check
@@ -14127,6 +15727,607 @@ true if **status** is of the specified type and value
 
 ``rsvd768``
   Reserved
+
+
+
+
+
+.. c:type:: enum nvme_lm_cdq_fields
+
+   Controller Data Queue command fields
+
+**Constants**
+
+``NVME_LM_CDQ_MOS_SHIFT``
+  Shift to set Management Operation Specific (MOS) field
+
+``NVME_LM_CDQ_MOS_MASK``
+  Mask to set MOS field
+
+``NVME_LM_CDQ_SEL_SHIFT``
+  Shift to set Select (SEL) field
+
+``NVME_LM_CDQ_SEL_MASK``
+  Mask to set SEL field
+
+``NVME_LM_SEL_CREATE_CDQ``
+  Create CDQ select option
+
+``NVME_LM_SEL_DELETE_CDQ``
+  Delete CDQ select option
+
+``NVME_LM_QT_SHIFT``
+  Shift amount to set Queue Type (QT) field relative to MOS
+
+``NVME_LM_QT_MASK``
+  Mask to set QT field relative to MOS
+
+``NVME_LM_CQS_SHIFT``
+  Shift amount for Create Queue Specific (CQS) field
+
+``NVME_LM_CQS_MASK``
+  Mask to set CQS field
+
+``NVME_LM_QT_USER_DATA_MIGRATION_QUEUE``
+  User Data Migration Queue type
+
+``NVME_LM_CREATE_CDQ_PC``
+  Physically Contiguous (PC)
+
+``NVME_LM_CREATE_CDQ_CNTLID_SHIFT``
+  Shift amount to set CNTLID field relative to MOS
+
+``NVME_LM_CREATE_CDQ_CNTLID_MASK``
+  Mask to set CNTLID field relative to MOS
+
+``NVME_LM_DELETE_CDQ_CDQID_SHIFT``
+  Shift amount to set CDQID field for deletion
+
+``NVME_LM_DELETE_CDQ_CDQID_MASK``
+  Mask to set CDQID field for deletion
+
+``NVME_LM_CREATE_CDQ_CDQID_SHIFT``
+  Shift amount to get CDQID field from Create response in
+  completion dword0
+
+``NVME_LM_CREATE_CDQ_CDQID_MASK``
+  Mask to get CNTLID field from Create response in
+  completion dword0
+
+
+
+
+.. c:type:: enum nvme_lm_track_send_fields
+
+   Track Send command fields
+
+**Constants**
+
+``NVME_LM_TRACK_SEND_MOS_SHIFT``
+  Shift to set Management Operation Specific (MOS) field
+
+``NVME_LM_TRACK_SEND_MOS_MASK``
+  Mask to set MOS field
+
+``NVME_LM_TRACK_SEND_SEL_SHIFT``
+  Shift to set Select (SEL) field
+
+``NVME_LM_TRACK_SEND_SEL_MASK``
+  Mask to set SEL field
+
+``NVME_LM_SEL_LOG_USER_DATA_CHANGES``
+  Log User Data Changes select option
+
+``NVME_LM_SEL_TRACK_MEMORY_CHANGES``
+  Track Memory Changes select option
+
+``NVME_LM_LACT_SHIFT``
+  Shift to set Logging Action (LACT) relative to MOS
+
+``NVME_LM_LACT_MASK``
+  Mask to set LACT relative to MOS
+
+``NVME_LM_LACT_STOP_LOGGING``
+  The controller shall stop logging user data changes to
+  namespaces attached to the controller associated with the
+  User Data Migration Queue specified in the CDQ ID.
+
+``NVME_LM_LACT_START_LOGGING``
+  The controller shall start logging user data changes to
+  namespaces attached to the controller associated with the
+  User Data Migration Queue into that User Data Migration
+  Queue where those user data changes are caused by the
+  controller associated with that User Data Migration Queue
+  processing commands.
+
+
+
+
+.. c:type:: enum nvme_lm_migration_send_fields
+
+   Migration Send command fields
+
+**Constants**
+
+``NVME_LM_MIGRATION_SEND_MOS_SHIFT``
+  Shift to set Management Operation Specific (MOS)
+  field
+
+``NVME_LM_MIGRATION_SEND_MOS_MASK``
+  Mask to set MOS field
+
+``NVME_LM_MIGRATION_SEND_SEL_SHIFT``
+  Shift amount to set Select (SEL) field
+
+``NVME_LM_MIGRATION_SEND_SEL_MASK``
+  Mask to set SEL field
+
+``NVME_LM_SEL_SUSPEND``
+  Migration Send - Suspend
+
+``NVME_LM_SEL_RESUME``
+  Migration Send - Resume
+
+``NVME_LM_SEL_SET_CONTROLLER_STATE``
+  Migration Send - Set Controller State
+
+``NVME_LM_MIGRATION_SEND_UIDX_SHIFT``
+  Shift to set UUID Index (UIDX)
+
+``NVME_LM_MIGRATION_SEND_UIDX_MASK``
+  Mask to set UIDX
+
+``NVME_LM_DUDMQ``
+  Delete User Data Migration Queue
+
+``NVME_LM_STYPE_SHIFT``
+  Shift amount to set Suspend Type (STYPE)
+
+``NVME_LM_STYPE_MASK``
+  Mask to set STYPE
+
+``NVME_LM_STYPE_SUSPEND_NOTIFICATION``
+  Suspend Notification - The specified controller is
+  going to be suspended in the future with a
+  subsequent Migration Send command
+
+``NVME_LM_STYPE_SUSPEND``
+  Suspend - Suspend the controller
+
+``NVME_LM_SUSPEND_CNTLID_SHIFT``
+  Shift amount to set Controller ID (CNTLID) when SEL
+  is Suspend
+
+``NVME_LM_SUSPEND_CNTLID_MASK``
+  Mask to set CNTLID with SEL Suspend
+
+``NVME_LM_RESUME_CNTLID_SHIFT``
+  Shift amount to set Controller ID (CNTLID) when SEL
+  is Resume
+
+``NVME_LM_RESUME_CNTLID_MASK``
+  Mask to set CNTLID when SEL is Resume
+
+``NVME_LM_SEQIND_SHIFT``
+  Shift amount to set Sequence Indicator (SEQIND)
+  field relative to MOS
+
+``NVME_LM_SEQIND_MASK``
+  Mask to set SEQIND field relative to MOS
+
+``NVME_LM_SEQIND_NOT_FIRST_NOT_LAST``
+  This command is not the first or last of a sequence
+  of two or more Migration Send commands with this
+  management operation used to transfer the controller
+  state from host to controller
+
+``NVME_LM_SEQIND_FIRST``
+  This command is the first of a sequence of two or
+  more Migration Send commands
+
+``NVME_LM_SEQIND_LAST``
+  This command is the last command of a sequence of
+  two or more Migration Send commands
+
+``NVME_LM_SEQIND_ENTIRE``
+  This Migration Send command is the only command and
+  contains the entire controller state for this
+  management operation
+
+``NVME_LM_SET_CONTROLLER_STATE_CSUUIDI_SHIFT``
+  Shift amount to set Controller State UUID Index
+  (CSUUIDI)
+
+``NVME_LM_SET_CONTROLLER_STATE_CSUUIDI_MASK``
+  Mask to set CSUUIDI
+
+``NVME_LM_SET_CONTROLLER_STATE_CSVI_SHIFT``
+  Shift amount to set Controller State Version Index
+  (CSVI)
+
+``NVME_LM_SET_CONTROLLER_STATE_CSVI_MASK``
+  Mask to set CSVI
+
+``NVME_LM_SET_CONTROLLER_STATE_CNTLID_SHIFT``
+  Shift amount to set Controller ID (CNTLID) when SEL
+  is Set Controller State
+
+``NVME_LM_SET_CONTROLLER_STATE_CNTLID_MASK``
+  Mask to set CNTLID when SEL is Set Controller State
+
+
+
+
+.. c:type:: enum nvme_lm_migration_recv_fields
+
+   Migration Receive command fields
+
+**Constants**
+
+``NVME_LM_MIGRATION_RECV_MOS_SHIFT``
+  Shift amount to set Management Specific Operation
+  (MOS) field
+
+``NVME_LM_MIGRATION_RECV_MOS_MASK``
+  Mask to set MOS field
+
+``NVME_LM_MIGRATION_RECV_SEL_SHIFT``
+  Shift amount to set Select (SEL) field
+
+``NVME_LM_MIGRATION_RECV_SEL_MASK``
+  Mask to set SEL field
+
+``NVME_LM_SEL_GET_CONTROLLER_STATE``
+  Get Controller State select option
+
+``NVME_LM_MIGRATION_RECV_UIDX_SHIFT``
+  Shift to set UUID Index (UIDX)
+
+``NVME_LM_MIGRATION_RECV_UIDX_MASK``
+  Mask to set UIDX
+
+``NVME_LM_GET_CONTROLLER_STATE_CSVI_SHIFT``
+  Shift amount to set Controller State Version Index
+  (CSVI) relative to MOS
+
+``NVME_LM_GET_CONTROLLER_STATE_CSVI_MASK``
+  Mask to set CSVI relative to MOS
+
+``NVME_LM_GET_CONTROLLER_STATE_CSUIDXP_SHIFT``
+  Shift amount to set Controller State UUID Index
+  Parameter (CSUIDXP)
+
+``NVME_LM_GET_CONTROLLER_STATE_CSUIDXP_MASK``
+  Mask to set CSUIDXP
+
+``NVME_LM_GET_CONTROLLER_STATE_CSUUIDI_SHIFT``
+  Shift amount to set Controller State UUID Index
+  (CSUUIDI)
+
+``NVME_LM_GET_CONTROLLER_STATE_CSUUIDI_MASK``
+  Mask to set CSUUIDI
+
+``NVME_LM_GET_CONTROLLER_STATE_CNTLID_SHIFT``
+  Shift amount to set Controller ID (CNTLID)
+
+``NVME_LM_GET_CONTROLLER_STATE_CNTLID_MASK``
+  Mask to set CNTLID
+
+``NVME_LM_GET_CONTROLLER_STATE_CSUP``
+  Controller Suspended
+
+
+
+
+.. c:type:: struct nvme_lm_io_submission_queue_data
+
+   I/O Submission Queue data structure. Fields related to the contents of Create I/O Submission Queue command that created an I/O Submission Queue.
+
+**Definition**
+
+::
+
+  struct nvme_lm_io_submission_queue_data {
+    __le64 iosqprp1;
+    __le16 iosqqsize;
+    __le16 iosqqid;
+    __le16 iosqcqid;
+    __le16 iosqa;
+    __le16 iosqhp;
+    __le16 iosqtp;
+    __u8 rsvd20[4];
+  };
+
+**Members**
+
+``iosqprp1``
+  I/O Submission PRP Entry 1 (IOSQPRP1)
+
+``iosqqsize``
+  I/O Submission Queue Size (IOSQQSIZE)
+
+``iosqqid``
+  I/O Submission Queue Identifier (IOSQQID)
+
+``iosqcqid``
+  I/O Completion Queue Identifier (IOSQCQID)
+
+``iosqa``
+  I/O Submission Queue Attributes (IOSQA)
+
+``iosqhp``
+  I/O Submission Queue Head Pointer (IOSQHP)
+
+``iosqtp``
+  I/O Submission Queue Tail Pointer (IOSQTP)
+
+``rsvd20``
+  Reserved
+
+
+
+
+
+.. c:type:: struct nvme_lm_io_completion_queue_data
+
+   I/O Completion Queue data structure. Fields related to the contents of Create I/O Completion Queue command that created an I/O Completion Queue.
+
+**Definition**
+
+::
+
+  struct nvme_lm_io_completion_queue_data {
+    __le64 iocqprp1;
+    __le16 iocqqsize;
+    __le16 iocqqid;
+    __le16 iocqhp;
+    __le16 iocqtp;
+    __le32 iocqa;
+    __u8 rsvd20[4];
+  };
+
+**Members**
+
+``iocqprp1``
+  I/O Completion Queue PRP Entry 1 (IOCQPRP1)
+
+``iocqqsize``
+  I/O Completion Queue Size (IOCQQSIZE)
+
+``iocqqid``
+  I/O Completion Queue Identifier (IOCQQID)
+
+``iocqhp``
+  I/O Completion Queue Head Pointer (IOCQHP)
+
+``iocqtp``
+  I/O Completion Queue Tail Pointer (IOCQTP)
+
+``iocqa``
+  I/O Completion Queue Attributes (IOCQA)
+
+``rsvd20``
+  Reserved
+
+
+
+
+
+.. c:type:: struct nvme_lm_nvme_controller_state_data_header
+
+   Controller State data structure header
+
+**Definition**
+
+::
+
+  struct nvme_lm_nvme_controller_state_data_header {
+    __le16 ver;
+    __le16 niosq;
+    __le16 niocq;
+    __le16 rsvd6;
+  };
+
+**Members**
+
+``ver``
+  The version of this data structure.
+
+``niosq``
+  The number of I/O Submission Queues contained in this data structure.
+
+``niocq``
+  The number of I/O Completion Queues contained in this data structure.
+
+``rsvd6``
+  Reserved
+
+
+
+
+
+.. c:type:: struct nvme_lm_nvme_controller_state_data
+
+   NVMe Controller State data structure describes the state of a NVMe Controller's I/O Submission and I/O Completion queues
+
+**Definition**
+
+::
+
+  struct nvme_lm_nvme_controller_state_data {
+    struct nvme_lm_nvme_controller_state_data_header hdr;
+    union {
+      struct nvme_lm_io_submission_queue_data sqs[0];
+      struct nvme_lm_io_completion_queue_data cqs[0];
+    };
+  };
+
+**Members**
+
+``hdr``
+  Header
+
+``{unnamed_union}``
+  anonymous
+
+``sqs``
+  I/O Submission Queue list
+
+``cqs``
+  I/O Completion Queue list
+
+
+
+
+
+.. c:type:: struct nvme_lm_controller_state_data_header
+
+   Controller State data header structure describes the contents of the Controller State data
+
+**Definition**
+
+::
+
+  struct nvme_lm_controller_state_data_header {
+    __le16 ver;
+    __u8 csattr;
+    __u8 rsvd3[13];
+    __u8 nvmecss[16];
+    __u8 vss[16];
+  };
+
+**Members**
+
+``ver``
+  Version of this data structure
+
+``csattr``
+  Controller state attributes
+
+``rsvd3``
+  Reserved
+
+``nvmecss``
+  NVMe Controller state size in dwords
+
+``vss``
+  Vendor specific size in dowrds
+
+
+
+
+
+.. c:type:: struct nvme_lm_controller_state_data
+
+   Controller State data structure contains data on the controller's state.
+
+**Definition**
+
+::
+
+  struct nvme_lm_controller_state_data {
+    struct nvme_lm_controller_state_data_header hdr;
+    struct nvme_lm_nvme_controller_state_data   data;
+  };
+
+**Members**
+
+``hdr``
+  Header
+
+``data``
+  Data
+
+
+
+
+
+.. c:type:: enum nvme_lm_queue_attributes
+
+   I/O Submission and I/O Completion Queue Attributes
+
+**Constants**
+
+``NVME_LM_IOSQPC_MASK``
+  Mask to get the Physically Contiguous (PC) bit for this I/O
+  submission queue.
+
+``NVME_LM_IOSQPC_SHIFT``
+  Shift to get the PC bit for this I/O submission queue
+
+``NVME_LM_IOSQPRIO_MASK``
+  Mask to get the Priority for this I/O submission queue.
+
+``NVME_LM_IOSQPRIO_SHIFT``
+  Shift to get the Priority for this I/O submission queue.
+
+``NVME_LM_IOCQPC_MASK``
+  Mask to get the Physicaly Contiguous (PC) bit for this I/O
+  completion queue.
+
+``NVME_LM_IOCQPC_SHIFT``
+  Shift to get the PC bit for this I/O completion queue.
+
+``NVME_LM_IOCQIEN_MASK``
+  Mask to get the Interrupts Enabled bit for this I/O completion
+  queue
+
+``NVME_LM_IOCQIEN_SHIFT``
+  Shift to get the Interrupts Enabled bit for this I/O completion
+
+``NVME_LM_S0PT_MASK``
+  Mask to get the value of the Phase Tag bit for Slot 0 of this I/O
+  completion queue.
+
+``NVME_LM_S0PT_SHIFT``
+  Shift to get the value of the Phase Tag bit for Slot 0 of this I/O
+  completion queue.
+
+``NVME_LM_IOCQIV_MASK``
+  Mask to get the Interrupt Vector (IV) for this I/O completion
+  queue.
+
+``NVME_LM_IOCQIV_SHIFT``
+  Shift to get the IV for this I/O completion queue.
+
+
+
+
+.. c:type:: enum nvme_lm_ctrl_data_queue_fid
+
+   Controller Data Queue - Set Feature
+
+**Constants**
+
+``NVME_LM_CTRL_DATA_QUEUE_ETPT_MASK``
+  Mask to set Enable Tail Pointer Trigger (ETPT)
+
+``NVME_LM_CTRL_DATA_QUEUE_ETPT_SHIFT``
+  Shift to set ETPT
+
+
+
+
+.. c:type:: struct nvme_lm_ctrl_data_queue_fid_data
+
+   Get Controller Data Queue feature data
+
+**Definition**
+
+::
+
+  struct nvme_lm_ctrl_data_queue_fid_data {
+    __le32 hp;
+    __le32 tpt;
+  };
+
+**Members**
+
+``hp``
+  Head Pointer
+
+``tpt``
+  Tail Pointer Trigger
 
 
 

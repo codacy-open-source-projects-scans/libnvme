@@ -1,4 +1,29 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+LIBNVME_UNRELEASED {
+};
+
+LIBNVME_1_16 {
+	global:
+		nvme_get_uuid_list;
+		nvme_set_etdas;
+		nvme_clear_etdas;
+		nvme_insert_tls_key_compat;
+		nvme_generate_tls_key_identity_compat;
+};
+
+LIBNVME_1_14 {
+	global:
+		nvme_get_features_temp_thresh2;
+		nvme_set_features_temp_thresh2;
+		nvme_subsystem_get_serial;
+};
+
+LIBNVME_1.13 {
+	global:
+		nvme_subsystem_get_fw_rev;
+		nvme_subsystem_get_model;
+};
+
 LIBNVME_1.12 {
 	global:
 		nvme_lm_cdq;
@@ -7,6 +32,7 @@ LIBNVME_1.12 {
 		nvme_lm_migration_recv;
 		nvme_lm_set_features_ctrl_data_queue;
 		nvme_lm_get_features_ctrl_data_queue;
+		nvmf_exat_ptr_next;
 };
 
 LIBNVME_1.11 {
@@ -310,6 +336,8 @@ LIBNVME_1_0 {
 		nvme_path_get_ctrl;
 		nvme_path_get_name;
 		nvme_path_get_ns;
+		nvme_path_get_numa_nodes;
+		nvme_path_get_queue_depth;
 		nvme_path_get_sysfs_dir;
 		nvme_paths_filter;
 		nvme_read_config;

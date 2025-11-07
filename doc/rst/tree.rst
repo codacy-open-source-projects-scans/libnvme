@@ -1414,6 +1414,34 @@ sysfs directory of **p**
 ANA (Asynchronous Namespace Access) state of **p**
 
 
+.. c:function:: const char * nvme_path_get_numa_nodes (nvme_path_t p)
+
+   NUMA nodes of an nvme_path_t object
+
+**Parameters**
+
+``nvme_path_t p``
+  :c:type:`nvme_path_t` object
+
+**Return**
+
+NUMA nodes associated to **p**
+
+
+.. c:function:: int nvme_path_get_queue_depth (nvme_path_t p)
+
+   Queue depth of an nvme_path_t object
+
+**Parameters**
+
+``nvme_path_t p``
+  :c:type:`nvme_path_t` object
+
+**Return**
+
+Queue depth of **p**
+
+
 .. c:function:: nvme_ctrl_t nvme_path_get_ctrl (nvme_path_t p)
 
    Parent controller of an nvme_path_t object
@@ -1802,6 +1830,20 @@ Controller id of **c**
 **Return**
 
 DH-HMAC-CHAP controller key or NULL if not set
+
+
+.. c:function:: const char * nvme_ns_head_get_sysfs_dir (nvme_ns_head_t head)
+
+   sysfs dir of namespave head
+
+**Parameters**
+
+``nvme_ns_head_t head``
+  namespace head instance
+
+**Return**
+
+sysfs directory name of **head**
 
 
 .. c:function:: void nvme_ctrl_set_dhchap_key (nvme_ctrl_t c, const char *key)
@@ -2259,6 +2301,48 @@ Sets the managing application string for **s**.
 IO policy used by current subsystem
 
 
+.. c:function:: const char * nvme_subsystem_get_model (nvme_subsystem_t s)
+
+   Return the model of subsystem
+
+**Parameters**
+
+``nvme_subsystem_t s``
+  nvme_subsystem_t object
+
+**Return**
+
+Model of the current subsystem
+
+
+.. c:function:: const char * nvme_subsystem_get_serial (nvme_subsystem_t s)
+
+   Return the serial number of subsystem
+
+**Parameters**
+
+``nvme_subsystem_t s``
+  nvme_subsystem_t object
+
+**Return**
+
+Serial number of the current subsystem
+
+
+.. c:function:: const char * nvme_subsystem_get_fw_rev (nvme_subsystem_t s)
+
+   Return the firmware rev of subsystem
+
+**Parameters**
+
+``nvme_subsystem_t s``
+  nvme_subsystem_t object
+
+**Return**
+
+Firmware revision of the current subsystem
+
+
 .. c:function:: int nvme_scan_topology (nvme_root_t r, nvme_scan_filter_t f, void *f_args)
 
    Scan NVMe topology and apply filter
@@ -2281,7 +2365,7 @@ by applying **f**.
 
 **Return**
 
-Number of elements scanned
+0 on success, -1 on failure with errno set.
 
 
 .. c:function:: const char * nvme_host_get_hostnqn (nvme_host_t h)

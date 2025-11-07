@@ -23,6 +23,17 @@ if cxx_available
         dependencies: libnvme_dep,
         include_directories: [incdir, internal_incdir]
     )
+
+    test('cpp-dump', cpp)
+
+    misc = executable(
+        'test-misc',
+        ['misc.cc'],
+        dependencies: libnvme_dep,
+        include_directories: [incdir, internal_incdir]
+    )
+    test('cpp-misc', misc)
+
 endif
 
 register = executable(
@@ -119,4 +130,12 @@ subdir('nbft')
 if json_c_dep.found()
     subdir('sysfs')
     subdir('config')
+endif
+
+if openssl_dep.found()
+  hkdf_add1 = executable(
+      'hkdf_add1',
+      ['hkdf_add1.c'],
+      dependencies: openssl_dep,
+  )
 endif

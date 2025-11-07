@@ -95,6 +95,10 @@ static const struct nvme_mi_transport test_transport = {
 	.submit = test_transport_submit,
 	.close = test_transport_close,
 	.desc_ep = test_transport_desc_ep,
+	//The following aren't actually used by the test_transport
+	.aem_fd = NULL,
+	.aem_purge = NULL,
+	.aem_read = NULL,
 };
 
 static void test_set_transport_callback(nvme_mi_ep_t ep, test_submit_cb cb,
@@ -566,8 +570,8 @@ static void test_admin_err_nvme_resp(nvme_mi_ep_t ep)
 		| NVME_SC_DNR));
 }
 
-/* invalid Admin command transfers */
-static int test_admin_invalid_formats_cb(struct nvme_mi_ep *ep,
+/* invalid command transfers */
+static int test_rejected_command_cb(struct nvme_mi_ep *ep,
 					 struct nvme_mi_req *req,
 					 struct nvme_mi_resp *resp,
 					 void *data)
@@ -588,7 +592,7 @@ static void test_admin_invalid_formats(nvme_mi_ep_t ep)
 	size_t len;
 	int rc;
 
-	test_set_transport_callback(ep, test_admin_invalid_formats_cb, NULL);
+	test_set_transport_callback(ep, test_rejected_command_cb, NULL);
 
 	ctrl = nvme_mi_init_ctrl(ep, 1);
 	assert(ctrl);
@@ -626,6 +630,28 @@ static void test_admin_invalid_formats(nvme_mi_ep_t ep)
 	/* req and resp payloads */
 	len = 4;
 	rc = nvme_mi_admin_xfer(ctrl, &req.hdr, 4, &resp, 0, &len);
+	assert(rc != 0);
+}
+
+static void test_mi_invalid_formats(nvme_mi_ep_t ep)
+{
+	struct {
+		struct nvme_mi_mi_req_hdr hdr;
+		uint8_t data[4];
+	} req = { 0 };
+	struct nvme_mi_mi_resp_hdr resp = { 0 };
+	nvme_mi_ctrl_t ctrl;
+	size_t len;
+	int rc;
+
+	test_set_transport_callback(ep, test_rejected_command_cb, NULL);
+
+	ctrl = nvme_mi_init_ctrl(ep, 1);
+	assert(ctrl);
+
+	/* resp too large */
+	len = 4096 + 4;
+	rc = nvme_mi_mi_xfer(ep, &req.hdr, 0, &resp, &len);
 	assert(rc != 0);
 }
 
@@ -696,7 +722,7 @@ static void test_resp_invalid_type(nvme_mi_ep_t ep)
 }
 
 /* test: response with mis-matching command slot */
-static int test_resp_csi_cb(struct nvme_mi_ep *ep,
+static int test_resp_csi_invert_cb(struct nvme_mi_ep *ep,
 			    struct nvme_mi_req *req,
 			    struct nvme_mi_resp *resp,
 			    void *data)
@@ -706,15 +732,54 @@ static int test_resp_csi_cb(struct nvme_mi_ep *ep,
 	return 0;
 }
 
-static void test_resp_csi(nvme_mi_ep_t ep)
+/* test: validation of proper csi setting */
+static int test_resp_csi_check_cb(struct nvme_mi_ep *ep,
+	struct nvme_mi_req *req,
+	struct nvme_mi_resp *resp,
+	void *data)
+{
+	assert((req->hdr->nmp & 1) == (ep->csi & 1));
+	return 0;
+}
+
+/* test: Ensure that csi bit is set properly in the request */
+static void test_resp_csi_request(nvme_mi_ep_t ep)
 {
 	struct nvme_mi_read_nvm_ss_info ss_info;
 	int rc;
 
-	test_set_transport_callback(ep, test_resp_csi_cb, NULL);
+	test_set_transport_callback(ep, test_resp_csi_check_cb, NULL);
 
 	rc = nvme_mi_mi_read_mi_data_subsys(ep, &ss_info);
 	assert(rc != 0);
+
+	nvme_mi_set_csi(ep, 1);//Change CSI
+
+	rc = nvme_mi_mi_read_mi_data_subsys(ep, &ss_info);
+	assert(rc != 0);
+
+	nvme_mi_set_csi(ep, 0);//Change CSI
+}
+
+/* test: Ensure that when csi bit set wrong in response,
+ * it results in an error
+ */
+static void test_resp_csi_mismatch(nvme_mi_ep_t ep)
+{
+	struct nvme_mi_read_nvm_ss_info ss_info;
+	int rc;
+
+	test_set_transport_callback(ep, test_resp_csi_invert_cb, NULL);
+
+	rc = nvme_mi_mi_read_mi_data_subsys(ep, &ss_info);
+	assert(rc != 0);
+
+	nvme_mi_set_csi(ep, 1);//Change CSI
+
+	rc = nvme_mi_mi_read_mi_data_subsys(ep, &ss_info);
+	assert(rc != 0);
+
+	nvme_mi_set_csi(ep, 0);//Change CSI
 }
 
 /* test: config get MTU request & response layout, ensure we're handling
@@ -1500,7 +1565,7 @@ static int test_admin_fw_download_cb(struct nvme_mi_ep *ep,
 
 static void test_admin_fw_download(struct nvme_mi_ep *ep)
 {
-	struct nvme_fw_download_args args;
+	struct nvme_fw_download_args args = { 0 };
 	struct fw_download_info info;
 	unsigned char fw[4096];
 	nvme_mi_ctrl_t ctrl;
@@ -1590,7 +1655,7 @@ static int test_admin_fw_commit_cb(struct nvme_mi_ep *ep,
 
 static void test_admin_fw_commit(struct nvme_mi_ep *ep)
 {
-	struct nvme_fw_commit_args args;
+	struct nvme_fw_commit_args args = { 0 };
 	struct fw_commit_info info;
 	nvme_mi_ctrl_t ctrl;
 	int rc;
@@ -2024,7 +2089,8 @@ struct test {
 	DEFINE_TEST(resp_req),
 	DEFINE_TEST(resp_hdr_small),
 	DEFINE_TEST(resp_invalid_type),
-	DEFINE_TEST(resp_csi),
+	DEFINE_TEST(resp_csi_request),
+	DEFINE_TEST(resp_csi_mismatch),
 	DEFINE_TEST(mi_config_get_mtu),
 	DEFINE_TEST(mi_config_set_freq),
 	DEFINE_TEST(mi_config_set_freq_invalid),
@@ -2049,6 +2115,7 @@ struct test {
 	DEFINE_TEST(endpoint_quirk_probe),
 	DEFINE_TEST(admin_dlen_doff_req),
 	DEFINE_TEST(admin_dlen_doff_resp),
+	DEFINE_TEST(mi_invalid_formats),
 };
 
 static void run_test(struct test *test, FILE *logfd, nvme_mi_ep_t ep)
