@@ -8,7 +8,7 @@
 project(
     'libnvme', ['c'],
     meson_version: '>= 0.62.0',
-    version: '1.16',
+    version: '1.16.1',
     license: 'LGPL-2.1-or-later',
     default_options: [
         'c_std=gnu99',
@@ -252,7 +252,7 @@ else
   conf.set('fallthrough', 'do {} while (0) /* fallthrough */')
 endif
 
-if openssl_dep.found()
+if openssl_dep.found() and meson.can_run_host_binaries()
   if openssl_dep.type_name() != 'internal'
     # Check for a bug in the EVP_PKEY_CTX_add1_hkdf_info implementation
     res = cc.run(
