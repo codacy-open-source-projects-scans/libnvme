@@ -627,6 +627,16 @@ static int build_options(nvme_host_t h, nvme_ctrl_t c, char **argstr)
 
 	ctrlkey = nvme_ctrl_get_dhchap_key(c);
 
+	if (cfg->tls && cfg->concat) {
+		nvme_msg(h->r, LOG_ERR, "cannot specify --tls and --concat together\n");
+		return -ENVME_CONNECT_INVAL;
+	}
+
+	if (cfg->concat && !hostkey) {
+		nvme_msg(h->r, LOG_ERR, "required argument [--dhchap-secret | -S] not specified with --concat\n");
+		return -ENVME_CONNECT_INVAL;
+	}
+
 	if (cfg->tls) {
 		ret = __nvme_import_keys_from_config(h, c, &keyring_id, &key_id);
 		if (ret) {
@@ -1001,6 +1011,34 @@ int nvmf_connect_ctrl(nvme_ctrl_t c)
 	return 0;
 }
 
+static void nvmf_update_tls_concat(struct nvmf_disc_log_entry *e,
+		nvme_ctrl_t c, nvme_host_t h)
+{
+	if (e->trtype != NVMF_TRTYPE_TCP ||
+	    e->tsas.tcp.sectype == NVMF_TCP_SECTYPE_NONE)
+		return;
+
+	if (e->treq & NVMF_TREQ_REQUIRED) {
+		nvme_msg(h->r, LOG_DEBUG,
+			"setting --tls due to treq %s and sectype %s\n",
+			nvmf_treq_str(e->treq),
+			nvmf_sectype_str(e->tsas.tcp.sectype));
+
+		c->cfg.tls = true;
+		return;
+	}
+
+	if (e->treq & NVMF_TREQ_NOT_REQUIRED) {
+		nvme_msg(h->r, LOG_DEBUG,
+			"setting --concat due to treq %s and sectype %s\n",
+			nvmf_treq_str(e->treq),
+			nvmf_sectype_str(e->tsas.tcp.sectype));
+
+		c->cfg.concat = true;
+		return;
+	}
+}
+
 nvme_ctrl_t nvmf_connect_disc_entry(nvme_host_t h,
 				    struct nvmf_disc_log_entry *e,
 				    const struct nvme_fabrics_config *cfg,
@@ -1099,9 +1137,8 @@ nvme_ctrl_t nvmf_connect_disc_entry(nvme_host_t h,
 	    nvmf_check_option(h->r, disable_sqflow))
 		c->cfg.disable_sqflow = true;
 
-	if (e->trtype == NVMF_TRTYPE_TCP &&
-	    e->tsas.tcp.sectype != NVMF_TCP_SECTYPE_NONE)
-		c->cfg.tls = true;
+	/* update tls or concat */
+	nvmf_update_tls_concat(e, c, h);
 
 	ret = nvmf_add_ctrl(h, c, cfg);
 	if (!ret)
