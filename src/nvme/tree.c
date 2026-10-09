@@ -36,6 +36,8 @@
 #include "log.h"
 #include "private.h"
 
+static void __nvme_free_subsystem(struct nvme_subsystem *s);
+
 /**
  * struct candidate_args - Used to look for a controller matching these parameters
  * @transport:		Transport type: loop, fc, rdma, tcp
@@ -225,7 +227,7 @@ static void nvme_filter_subsystem(nvme_root_t r, nvme_subsystem_t s,
 
 	nvme_msg(r, LOG_DEBUG, "filter out subsystem %s\n",
 		 nvme_subsystem_get_name(s));
-	nvme_free_subsystem(s);
+	__nvme_free_subsystem(s);
 }
 
 static void nvme_filter_ns(nvme_root_t r, nvme_ns_t n,
@@ -632,7 +634,13 @@ nvme_path_t nvme_namespace_next_path(nvme_ns_t ns, nvme_path_t p)
 
 static void __nvme_free_ns(struct nvme_ns *n)
 {
+	struct nvme_path *p, *_p;
+
 	list_del_init(&n->entry);
+	nvme_namespace_for_each_path_safe(n, p, _p) {
+		list_del_init(&p->nentry);
+		p->n = NULL;
+	}
 	nvme_ns_release_fd(n);
 	free(n->generic_name);
 	free(n->name);
@@ -883,7 +891,7 @@ static int nvme_scan_subsystem(struct nvme_root *r, const char *name)
 				continue;
 			if (strcmp(_s->name, name))
 				continue;
-			if (!nvme_subsystem_scan_namespaces(r, _s)) {
+			if (nvme_subsystem_scan_namespaces(r, _s)) {
 				errno = EINVAL;
 				return -1;
 			}
@@ -904,7 +912,7 @@ static int nvme_scan_subsystem(struct nvme_root *r, const char *name)
 			errno = ENOMEM;
 			return -1;
 		}
-		if (!nvme_subsystem_scan_namespaces(r, s)) {
+		if (nvme_subsystem_scan_namespaces(r, s)) {
 			errno = EINVAL;
 			return -1;
 		}
@@ -2696,15 +2704,41 @@ static int nvme_strtoi(const char *str, void *res)
 	return 0;
 }
 
+static int hex_digit(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
 static int nvme_strtoeuid(const char *str, void *res)
 {
-	memcpy(res, str, 8);
+	__u8 *eui = res;
+	int hi, lo, i;
+
+	/* the sysfs eui attribute is the EUI-64 as 16 hex digits */
+	for (i = 0; i < 8; i++) {
+		hi = hex_digit(str[2 * i]);
+		lo = hex_digit(str[2 * i + 1]);
+		if (hi < 0 || lo < 0)
+			return -EINVAL;
+		eui[i] = hi << 4 | lo;
+	}
 	return 0;
 }
 
 static int nvme_strtouuid(const char *str, void *res)
 {
-	memcpy(res, str, NVME_UUID_LEN);
+	unsigned char uuid[NVME_UUID_LEN];
+
+	if (nvme_uuid_from_string(str, uuid))
+		return -EINVAL;
+
+	memcpy(res, uuid, NVME_UUID_LEN);
 	return 0;
 }
 

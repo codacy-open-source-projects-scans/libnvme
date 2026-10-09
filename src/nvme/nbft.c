@@ -84,7 +84,7 @@ static char *trtype_to_string(__u8 transport_type)
 static int __get_heap_obj(struct nbft_header *header, const char *filename,
 			  const char *descriptorname, const char *fieldname,
 			  struct nbft_heap_obj obj, bool is_string,
-			  char **output)
+			  size_t min_len, char **output)
 {
 	if (le16_to_cpu(obj.length) == 0)
 		return -ENOENT;
@@ -113,16 +113,30 @@ static int __get_heap_obj(struct nbft_header *header, const char *filename,
 				 filename, fieldname, descriptorname);
 			return -EINVAL;
 		}
+	} else if (le16_to_cpu(obj.length) < min_len) {
+		nvme_msg(NULL, LOG_DEBUG,
+			 "file %s: object '%s' in descriptor '%s' is too short (%d, expected %zu)\n",
+			 filename, fieldname, descriptorname,
+			 le16_to_cpu(obj.length), min_len);
+		return -EINVAL;
 	}
 
 	return 0;
 }
 
-#define get_heap_obj(descriptor, obj, is_string, output)	\
-	__get_heap_obj(header, nbft->filename,			\
-		       stringify(descriptor), stringify(obj),	\
-		       descriptor->obj, is_string,		\
-		       output)
+/*
+ * Heap objects with structured (non-string) content are dereferenced as a
+ * struct by the caller, so make sure the object is at least as large as the
+ * structure it is interpreted as.  String and plain byte-array objects
+ * have no minimum: the helper already rejects empty objects, and such
+ * content is sized one byte per element.
+ */
+#define get_heap_obj(descriptor, obj, is_string, output)		\
+	__get_heap_obj(header, nbft->filename,				\
+		       stringify(descriptor), stringify(obj),		\
+		       descriptor->obj, is_string,			\
+		       (is_string) ? 0 : sizeof(**(output)),		\
+		       (char **)(output))
 
 static struct nbft_info_discovery *discovery_from_index(struct nbft_info *nbft, int i)
 {
@@ -227,9 +241,19 @@ static int read_ssns(struct nbft_info *nbft,
 	}
 
 	/* subsystem transport address */
-	ret = get_heap_obj(raw_ssns, subsys_traddr_obj, 0, (char **)&tmp);
+	ret = get_heap_obj(raw_ssns, subsys_traddr_obj, 0, &tmp);
 	if (ret)
 		goto fail;
+
+	/* format_ip_addr() always reads a full 16 bytes of IP address */
+	if (le16_to_cpu(raw_ssns->subsys_traddr_obj.length) < sizeof(struct in6_addr)) {
+		nvme_msg(NULL, LOG_DEBUG,
+			 "file %s: SSNS %d transport address heap object too short (%d bytes)\n",
+			 nbft->filename, ssns->index,
+			 le16_to_cpu(raw_ssns->subsys_traddr_obj.length));
+		ret = -EINVAL;
+		goto fail;
+	}
 
 	format_ip_addr(ssns->traddr, sizeof(ssns->traddr), tmp);
 
@@ -262,7 +286,7 @@ static int read_ssns(struct nbft_info *nbft,
 	}
 
 	/* HFI descriptors */
-	ret = get_heap_obj(raw_ssns, secondary_hfi_assoc_obj, 0, (char **)&ss_hfi_indexes);
+	ret = get_heap_obj(raw_ssns, secondary_hfi_assoc_obj, 0, &ss_hfi_indexes);
 	if (ret)
 		goto fail;
 
@@ -282,6 +306,7 @@ static int read_ssns(struct nbft_info *nbft,
 	}
 	ssns->num_hfis = 1;
 	for (i = 0; i < le16_to_cpu(raw_ssns->secondary_hfi_assoc_obj.length); i++) {
+		struct nbft_info_hfi *hfi;
 		bool duplicate = false;
 		int j;
 
@@ -303,13 +328,18 @@ static int read_ssns(struct nbft_info *nbft,
 			continue;
 		}
 
-		ssns->hfis[i + 1] = hfi_from_index(nbft, ss_hfi_indexes[i]);
-		if (ss_hfi_indexes[i] && !ssns->hfis[i + 1])
+		if (!ss_hfi_indexes[i])
+			/* zero marks an unused association slot */
+			continue;
+
+		hfi = hfi_from_index(nbft, ss_hfi_indexes[i]);
+		if (!hfi) {
 			nvme_msg(NULL, LOG_DEBUG,
 				 "file %s: SSNS %d HFI %d not found\n",
 				 nbft->filename, ssns->index, ss_hfi_indexes[i]);
-		else
-			ssns->num_hfis++;
+			continue;
+		}
+		ssns->hfis[ssns->num_hfis++] = hfi;
 	}
 
 	/* SSNS NQN */
@@ -322,7 +352,7 @@ static int read_ssns(struct nbft_info *nbft,
 		struct nbft_ssns_ext_info *ssns_extended_info;
 
 		if (!get_heap_obj(raw_ssns, ssns_extended_info_desc_obj, 0,
-				  (char **)&ssns_extended_info))
+				  &ssns_extended_info))
 			read_ssns_exended_info(nbft, ssns, ssns_extended_info);
 	}
 
@@ -330,6 +360,7 @@ static int read_ssns(struct nbft_info *nbft,
 	return 0;
 
 fail:
+	free(ssns->hfis);
 	free(ssns);
 	return ret;
 }
@@ -412,7 +443,7 @@ static int read_hfi(struct nbft_info *nbft,
 		strncpy(hfi->transport, trtype_to_string(raw_hfi->trtype),
 			sizeof(hfi->transport));
 
-		ret = get_heap_obj(raw_hfi, trinfo_obj, 0, (char **)&raw_hfi_info_tcp);
+		ret = get_heap_obj(raw_hfi, trinfo_obj, 0, &raw_hfi_info_tcp);
 		if (ret)
 			goto fail;
 
@@ -496,7 +527,7 @@ static void read_hfi_descriptors(struct nbft_info *nbft, int num_hfi,
 {
 	int i, cnt;
 
-	nbft->hfi_list = calloc(num_hfi + 1, sizeof(struct nbft_info_hfi));
+	nbft->hfi_list = calloc(num_hfi + 1, sizeof(*nbft->hfi_list));
 	for (i = 0, cnt = 0; i < num_hfi; i++) {
 		if (read_hfi(nbft, &raw_hfi_array[i], &nbft->hfi_list[cnt]) == 0)
 			cnt++;
@@ -508,7 +539,7 @@ static void read_security_descriptors(struct nbft_info *nbft, int num_sec,
 {
 	int i, cnt;
 
-	nbft->security_list = calloc(num_sec + 1, sizeof(struct nbft_info_security));
+	nbft->security_list = calloc(num_sec + 1, sizeof(*nbft->security_list));
 	for (i = 0, cnt = 0; i < num_sec; i++) {
 		if (read_security(nbft, &raw_sec_array[i], &nbft->security_list[cnt]) == 0)
 			cnt++;
@@ -520,7 +551,7 @@ static void read_discovery_descriptors(struct nbft_info *nbft, int num_disc,
 {
 	int i, cnt;
 
-	nbft->discovery_list = calloc(num_disc + 1, sizeof(struct nbft_info_discovery));
+	nbft->discovery_list = calloc(num_disc + 1, sizeof(*nbft->discovery_list));
 	for (i = 0, cnt = 0; i < num_disc; i++) {
 		if (read_discovery(nbft, &raw_disc_array[i], &nbft->discovery_list[cnt]) == 0)
 			cnt++;
@@ -532,7 +563,7 @@ static void read_ssns_descriptors(struct nbft_info *nbft, int num_ssns,
 {
 	int i, cnt;
 
-	nbft->subsystem_ns_list = calloc(num_ssns + 1, sizeof(struct nbft_info_subsystem_ns));
+	nbft->subsystem_ns_list = calloc(num_ssns + 1, sizeof(*nbft->subsystem_ns_list));
 	for (i = 0, cnt = 0; i < num_ssns; i++) {
 		if (read_ssns(nbft, &raw_ssns_array[i], &nbft->subsystem_ns_list[cnt]) == 0)
 			cnt++;
@@ -603,8 +634,9 @@ static int parse_raw_nbft(struct nbft_info *nbft)
 	if (control->num_hfi > 0) {
 		struct nbft_hfi *raw_hfi_array;
 
-		verify(le32_to_cpu(control->hfio) + sizeof(struct nbft_hfi) *
-		       control->num_hfi <= le32_to_cpu(header->length),
+		verify((unsigned long long)le32_to_cpu(control->hfio) +
+		       sizeof(struct nbft_hfi) * control->num_hfi <=
+		       le32_to_cpu(header->length),
 		       "invalid hfi descriptor list offset");
 		raw_hfi_array = (struct nbft_hfi *)(raw_nbft + le32_to_cpu(control->hfio));
 		read_hfi_descriptors(nbft, control->num_hfi, raw_hfi_array,
@@ -617,8 +649,9 @@ static int parse_raw_nbft(struct nbft_info *nbft)
 	if (control->num_sec > 0) {
 		struct nbft_security *raw_security_array;
 
-		verify(le32_to_cpu(control->seco) + le16_to_cpu(control->secl) *
-		       control->num_sec <= le32_to_cpu(header->length),
+		verify((unsigned long long)le32_to_cpu(control->seco) +
+		       sizeof(struct nbft_security) * control->num_sec <=
+		       le32_to_cpu(header->length),
 		       "invalid security profile desciptor list offset");
 		raw_security_array = (struct nbft_security *)(raw_nbft +
 				     le32_to_cpu(control->seco));
@@ -633,8 +666,9 @@ static int parse_raw_nbft(struct nbft_info *nbft)
 	if (control->num_disc > 0) {
 		struct nbft_discovery *raw_discovery_array;
 
-		verify(le32_to_cpu(control->disco) + le16_to_cpu(control->discl) *
-		       control->num_disc <= le32_to_cpu(header->length),
+		verify((unsigned long long)le32_to_cpu(control->disco) +
+		       sizeof(struct nbft_discovery) * control->num_disc <=
+		       le32_to_cpu(header->length),
 		       "invalid discovery profile descriptor list offset");
 		raw_discovery_array = (struct nbft_discovery *)(raw_nbft +
 				      le32_to_cpu(control->disco));
@@ -648,8 +682,9 @@ static int parse_raw_nbft(struct nbft_info *nbft)
 	if (control->num_ssns > 0) {
 		struct nbft_ssns *raw_ssns_array;
 
-		verify(le32_to_cpu(control->ssnso) + le16_to_cpu(control->ssnsl) *
-		       control->num_ssns <= le32_to_cpu(header->length),
+		verify((unsigned long long)le32_to_cpu(control->ssnso) +
+		       sizeof(struct nbft_ssns) * control->num_ssns <=
+		       le32_to_cpu(header->length),
 		       "invalid subsystem namespace descriptor list offset");
 		raw_ssns_array = (struct nbft_ssns *)(raw_nbft +
 				 le32_to_cpu(control->ssnso));
